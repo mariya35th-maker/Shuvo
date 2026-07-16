@@ -35,10 +35,15 @@ def keep_alive():
 
 # ===================== কনফিগারেশন =====================
 API_KEY      = "nx_2KxBsj-RtOzFUtVKnxXrPv_M9hZo-8UdlTXJrg"
-BOT_TOKEN    = ''8738544813:AAEVERnaxuHKkYJ15XdJ0i1H1pdWpxknapQ''
+# সংশোধন করা হয়েছে: এখানে ডাবল কোটেশন ঠিক করা হয়েছে
+BOT_TOKEN    = '8738544813:AAEVERnaxuHKkYJ15XdJ0i1H1pdWpxknapQ'
 BASE_URL     = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api"
-HEADERS      = {Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
-payload = {"range": range_val, "sid": "wa", "no_plus": False, "national": False}
+# সংশোধন করা হয়েছে: এখানে Authorization এর শুরুতে " যোগ করা হয়েছে
+HEADERS      = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
+# payload ভেরিয়েবলটি এখানে ডিফাইন করা হলেও range_val এর মান দেওয়া নেই, 
+# এটি আপনার প্রয়োজনে ঠিক করে নেবেন।
+range_val    = "example_range" 
+payload      = {"range": range_val, "sid": "wa", "no_plus": False, "national": False}
 ADMIN_ID     = "6136815573"
 GROUP_URL    = "https://t.me/tem_withh"
 FIREBASE_URL = "https://shuvo-866aa-default-rtdb.firebaseio.com/"
