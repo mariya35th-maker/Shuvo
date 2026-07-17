@@ -1118,35 +1118,41 @@ def infinite_otp_search(chat_id, start_numbers, search_msg_id):
             if not current_nums:
                 time.sleep(2); continue
             try:
-                r    = session.get(f"{BASE_URL}/inbox", headers=HEADERS, timeout=10)
+                # ✅ Nexus API - OTP পান
+                api_id = user_ranges.get(chat_id)
+                if not api_id:
+                    time.sleep(2); continue
+                
+                r = session.get(f"{BASE_URL}/numbers/{api_id}", headers=HEADERS, timeout=10)
                 data = r.json()
-                for item in _normalize_inbox_items(data):
-                    msg_id  = item.get("otp_id") or item.get("id")
-                    api_num = clean_number(item.get("number", ""))
-                    if msg_id in global_used_otps.get(chat_id, set()):
-                        continue
-                    # check against all current numbers
-                    matched_num = None
-                    matched_idx = None
-                    for idx, num in enumerate(current_nums):
-                        cur = clean_number(num)
-                        if api_num in cur or cur in api_num:
-                            matched_num = num; matched_idx = idx; break
-                    if not matched_num:
-                        continue
-                    if msg_id in used_otps.get(chat_id, []):
-                        continue
-                    if chat_id not in used_otps:
-                        used_otps[chat_id] = []
-                    if chat_id not in global_used_otps:
-                        global_used_otps[chat_id] = set()
-                    used_otps[chat_id].append(msg_id)
-                    global_used_otps[chat_id].add(msg_id)
-                    otp = extract_otp(item.get("message", ""), matched_num)
-                    if otp is None:
-                        continue
+                
+                if data.get("ok") and data.get("otps"):
+                    for item in data.get("otps", []):
+                        msg_id = item.get("id", "")
+                        message_text = item.get("body") or item.get("text") or item.get("full_text") or item.get("console")
                         
-                        continue
+                        if msg_id in global_used_otps.get(chat_id, set()):
+                            continue
+                        
+                        # সব নাম্বারে match করার চেষ্টা করুন
+                        matched_num = None
+                        matched_idx = None
+                        for idx, num in enumerate(current_nums):
+                            matched_num = num; matched_idx = idx; break
+                        
+                        if not matched_num:
+                            continue
+                        if msg_id in used_otps.get(chat_id, []):
+                            continue
+                        if chat_id not in used_otps:
+                            used_otps[chat_id] = []
+                        if chat_id not in global_used_otps:
+                            global_used_otps[chat_id] = set()
+                        used_otps[chat_id].append(msg_id)
+                        global_used_otps[chat_id].add(msg_id)
+                        otp = extract_otp(message_text, matched_num)
+                        if otp is None:
+                            continue
                         
                     uid_str = str(chat_id)
                     # ✅ Firebase থেকে dynamic price পড়ুন
@@ -1229,7 +1235,7 @@ def auto_check_otp(chat_id, phone_numbers, number_msg_id=None, search_msg_id=Non
                 otp_running[chat_id] = False; return
 
             try:
-                r = session.get(f"{BASE_URL}/inbox", headers=HEADERS, timeout=15)
+                r = session.get(f"{BASE_URL}/numbers/{api_id}", headers=HEADERS, timeout=15)
                 r.raise_for_status()
                 data = r.json()
                 consecutive_errors = 0
@@ -1328,30 +1334,64 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
 
     for attempt in range(max_retries):
         try:
-            r    = session.post(f"{BASE_URL}/numbers", headers=HEADERS,
-                                 json={"range": rid, "sid": "wa", "no_plus": False, "national": False},
-                                 timeout=15)
+            # ✅ Nexus API - সঠিক format এ নাম্বার allocate করুন
+            service_to_sid = {
+                "Facebook": "facebook",
+                "WhatsApp": "wa",
+                "Telegram": "telegram",
+                "Instagram": "instagram"
+            }
+            
+            sid = service_to_sid.get(service_name, "wa")
+            
+            payload = {
+                "range": "8801",  # Bangladesh
+                "sid": sid,
+                "no_plus": False,
+                "national": False
+            }
+            
+            r = session.post(f"{BASE_URL}/numbers", json=payload, headers=HEADERS, timeout=15)
             data = r.json()
+            
             if data.get("ok"):
                 full_num = str(data.get("number", "")).replace("+", "")
-                country  = country_name_from_number(full_num)
+                country = data.get("country", "Unknown")
+                api_id = data.get("id")  # API ID save করুন
+                user_ranges[chat_id] = api_id  # Store করুন OTP check এর জন্য
+                
                 if full_num not in nums:
                     nums.append(full_num)
                     countries.append(country)
                 break
-            if attempt < max_retries - 1:
-                try:
-                    bot.edit_message_text(f"⏳ নাম্বার খোঁজা হচ্ছে... ({attempt + 2}/{max_retries})", chat_id, status_id)
-                except Exception:
-                    pass
-                time.sleep(3)
-        except Exception:
-            if attempt < max_retries - 1:
-                time.sleep(3)
-
-    if not nums:
+            
+    for attempt in range(3):
         try:
-            bot.edit_message_text("⚠️ এখন নাম্বার পাওয়া যাচ্ছে না, একটু পরে আবার চেষ্টা করুন।", chat_id, status_id, reply_markup=try_again_markup())
+            service_to_sid = {
+                "Facebook": "facebook",
+                "WhatsApp": "wa",
+                "Telegram": "telegram",
+                "Instagram": "instagram"
+            }
+            sid = service_to_sid.get(service_name, "wa")
+            payload = {
+                "range": "8801",
+                "sid": sid,
+                "no_plus": False,
+                "national": False
+            }
+            r = session.post(f"{BASE_URL}/numbers", json=payload, headers=HEADERS, timeout=15)
+            data = r.json()
+            if data.get("ok"):
+                full_num2 = str(data.get("number", "")).replace("+", "")
+                country2 = data.get("country", "Unknown")
+                if full_num2 not in nums:
+                    nums.append(full_num2)
+                    countries.append(country2)
+                break
+            time.sleep(2)
+        except Exception:
+            time.sleep(2)
         except Exception:
             pass
         return
