@@ -1077,14 +1077,20 @@ def get_country_name_from_code(code):
 # ===================== LIVE TRAFFIC DISPLAY =====================
 @bot.message_handler(commands=['strd'])
 def strd_command(message):
-    chat_id  = message.chat.id
-    nums     = user_numbers.get(chat_id, [])
-    if not nums:
-        bot.reply_to(message, "❌ আগে একটি নাম্বার নিন!"); return
+    uid = str(message.from_user.id)
+    chat_id = message.chat.id
     if strd_running.get(chat_id):
         bot.reply_to(message, "⏳ ইতিমধ্যে OTP খোঁজা চলছে!"); return
-    search_msg = bot.send_message(chat_id, "🔍 OTP SEARCHING (∞)...\n⏳ Number change না হওয়া পর্যন্ত চালু...")
-    threading.Thread(target=infinite_otp_search, args=(chat_id, list(nums), search_msg.message_id), daemon=True).start()
+    
+    # ✅ Welcome message দাও
+    welcome_text = (
+        "👋𓆩𓆩WELCOME TO OTP SERViCE𓆪𓆪\n"
+        " ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅\n\n"
+        "🤖 WELCOME TO TEAM WITH 3.0 \n\n"
+        " ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅\n\n"
+        "♾️ POWERED BY Shuvoᯓᡣ𐭩"
+    )
+    bot.send_message(chat_id, welcome_text, reply_markup=main_markup(uid))
 
 def infinite_otp_search(chat_id, start_numbers, search_msg_id):
     strd_running[chat_id] = True
