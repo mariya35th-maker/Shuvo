@@ -342,19 +342,6 @@ def update_traffic(service_name, country, flag):
     key = f"{flag} {country}"
     live_traffic[service_name][key] = live_traffic[service_name].get(key, 0) + 1
 
-def get_traffic_display():
-    display = "📊 LIVE TRAFFIC\n\n"
-    for service in FIXED_SERVICES + ["Others"]:
-        display += f"{service}\n"
-        if not live_traffic[service]:
-            display += "  (কোনো OTP নেই)\n"
-        else:
-            sorted_countries = sorted(live_traffic[service].items(), key=lambda x: x[1], reverse=True)
-            for country_key, count in sorted_countries[:5]:
-                display += f"  {country_key} [{count}]\n"
-        display += "\n"
-    return display
-
 # ===================== MARKUPS =====================
 def join_markup():
     return build_inline_keyboard([
@@ -369,13 +356,9 @@ def main_markup(uid=None):
     b3, b4 = types.KeyboardButton("GET 2FA CODE"), types.KeyboardButton("ADMIN SUPPORT")
     b5, b6 = types.KeyboardButton("BALANCE"), types.KeyboardButton("PROFILE")
     
-    for b, s in [(b1, "primary"), (b2, "success"), (b3, "primary"), (b4, "success"), (b5, "success"), (b6, "primary")]:
-        b.__dict__["style"] = s
-        
     markup.row(b1, b2).row(b3, b4).row(b5, b6)
     if uid and is_admin(uid):
         bp = types.KeyboardButton("ADMIN PANEL")
-        bp.__dict__["style"] = "danger"
         markup.add(bp)
     return markup
 
@@ -406,45 +389,11 @@ def balance_markup(balance):
 def admin_panel_markup():
     return build_inline_keyboard([
         [make_button("🌍 Add Country", callback_data="adm_add_country", style="success"), make_button("🗑️ Del Country", callback_data="adm_del_country", style="danger")],
-        [make_button("📨 User Message", callback_data="adm_user_message", style="primary"), make_button("💰 Add Money", callback_data="adm_add_money", style="success")],
-        [make_button("🗑️ Money Clear", callback_data="adm_money_clear", style="danger"), make_button("💰 Change Price", callback_data="admin_change_price", style="success")],
-        [make_button("👥 User Count", callback_data="adm_user_count", style="primary"), make_button("📊 All User Money", callback_data="adm_all_money", style="primary")],
-        [make_button("❌ Close", callback_data="adm_close", style="danger")]
+        [make_button("💰 Change Price", callback_data="admin_change_price", style="success"), make_button("❌ Close", callback_data="adm_close", style="danger")]
     ])
 
 def admin_cancel_markup():
     return build_inline_keyboard([[make_button("❌ Cancel", callback_data="adm_cancel", style="danger")]])
-
-# ===================== CHANNEL/MESSAGE HANDLERS =====================
-@bot.message_handler(func=lambda m: m.chat.id == OTP_GROUP_ID, content_types=['text'])
-def handle_otp_group_message(message):
-    try:
-        msg_text = message.text or ""
-        flag, country = extract_country_from_otp_message(msg_text)
-        if not flag or not country: return
-        
-        service_name = "Others"
-        for svc in ["facebook", "whatsapp", "instagram", "telegram"]:
-            if svc in msg_text.lower():
-                service_name = svc.capitalize()
-                break
-        update_traffic(service_name, country, flag)
-    except Exception as e: logging.error(f"Traffic parsing fail: {e}")
-
-@bot.message_handler(commands=['start'])
-@safe_execute
-def start(message):
-    uid = str(message.from_user.id)
-    uname = message.from_user.username or "User"
-    register_user(uid, uname)
-    user_names[uid] = uname
-    
-    if not is_joined(message.from_user.id):
-        bot.send_message(message.chat.id, "🔗 𝐂𝐡𝐚𝐧𝐧𝐞𝐥 𝐕𝐞𝐫𝐢fic𝐚𝐭𝐢𝐨𝐧 𝐑𝐞𝐪𝐮𝐢𝐫𝐞 Required\n\n📢 আপনাকে আমাদের চ্যানেলে Join করতে হবে।", reply_markup=join_markup())
-        return
-        
-    welcome_text = "👋𓆩𓆩WELCOME TO OTP SERViCE𓆪𓆪\n ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅\n\n🤖 WELCOME TO TEAM WITH 3.0 \n\n ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅\n\n♾️ POWERED BY Shuvoᯓᡣ𐭩"
-    bot.send_message(message.chat.id, welcome_text, reply_markup=main_markup(uid))
 
 # ===================== ENGINE PROCESSING (OTP SEARCH) =====================
 def auto_check_otp(chat_id, phone_numbers, number_msg_id=None):
@@ -469,64 +418,79 @@ def auto_check_otp(chat_id, phone_numbers, number_msg_id=None):
             return
 
         try:
-            api_id = user_ranges.get(chat_id)
-            if not api_id:
-                time.sleep(5); continue
-                
-            r = requests.get(f"{OTP_API}/numbers/{api_id}", headers={"Authorization": f"Bearer {OTP_KEY}"}, timeout=12)
-            for item in _normalize_inbox_items(r.json()):
-                api_num = "".join(filter(str.isdigit, str(item.get("number", ""))))
-                matched_num, matched_idx = None, None
-                for idx, num in enumerate(phone_numbers):
-                    cur = "".join(filter(str.isdigit, str(num)))
-                    if api_num and cur and (api_num in cur or cur in api_num):
-                        matched_num, matched_idx = num, idx
-                        break
-                if not matched_num: continue
-                
-                msg_id = item.get("otp_id") or item.get("id")
-                if not msg_id or msg_id in global_used_otps[chat_id] or msg_id in used_otps[chat_id]: continue
-                
-                used_otps[chat_id].append(msg_id)
-                global_used_otps[chat_id].add(msg_id)
-                otp = extract_otp(item.get("message", ""), matched_num)
-                if not otp: continue
-                
-                price = get_otp_price_from_firebase()
-                update_firebase_balance(chat_id, price)
-                
-                countries_list = user_countries.get(chat_id, [])
-                det_country = countries_list[matched_idx] if matched_idx < len(countries_list) else "Unknown"
-                flag = get_flag(det_country)
-                
-                service = user_service.get(chat_id, "Others")
-                update_traffic(service, det_country, flag)
-                
-                text = f"╭──────────────╮\n📩 {service} OTP  ✅\n╰──────────────╯\n{flag or '🌍'}  : {matched_num}\n💸 𝐄𝐚𝐫𝐧𝐞𝐝 : {price:.2f} ৳\n✅ 𝐒𝐭𝐚𝐭𝐮𝐬 : 𝐒𝐮𝐜𝐜𝐞𝐬𝐬"
-                bot.send_message(chat_id, text, reply_markup=otp_result_markup(otp))
+            api_ids = user_ranges.get(chat_id, [])
+            for api_id in api_ids:
+                r = requests.get(f"{OTP_API}/numbers/{api_id}", headers={"Authorization": f"Bearer {OTP_KEY}"}, timeout=12)
+                for item in _normalize_inbox_items(r.json()):
+                    api_num = "".join(filter(str.isdigit, str(item.get("number", ""))))
+                    matched_num, matched_idx = None, None
+                    for idx, num in enumerate(phone_numbers):
+                        cur = "".join(filter(str.isdigit, str(num)))
+                        if api_num and cur and (api_num in cur or cur in api_num):
+                            matched_num, matched_idx = num, idx
+                            break
+                    if not matched_num: continue
+                    
+                    msg_id = item.get("otp_id") or item.get("id")
+                    if not msg_id or msg_id in global_used_otps[chat_id] or msg_id in used_otps[chat_id]: continue
+                    
+                    used_otps[chat_id].append(msg_id)
+                    global_used_otps[chat_id].add(msg_id)
+                    otp = extract_otp(item.get("message", ""), matched_num)
+                    if not otp: continue
+                    
+                    price = get_otp_price_from_firebase()
+                    update_firebase_balance(chat_id, price)
+                    
+                    countries_list = user_countries.get(chat_id, [])
+                    det_country = countries_list[matched_idx] if matched_idx < len(countries_list) else "Unknown"
+                    flag = get_flag(det_country)
+                    
+                    service = user_service.get(chat_id, "Others")
+                    update_traffic(service, det_country, flag)
+                    
+                    text = f"╭──────────────╮\n📩 {service} OTP  ✅\n╰──────────────╯\n{flag or '🌍'}  : {matched_num}\n💸 𝐄𝐚𝐫𝐧𝐞𝐝 : {price:.2f} ৳\n✅ 𝐒𝐭𝐚𝐭𝐮𝐬 : 𝐒𝐮𝐜𝐜𝐞𝐬𝐬"
+                    bot.send_message(chat_id, text, reply_markup=otp_result_markup(otp))
         except Exception: pass
         time.sleep(3)
 
 def process_number(message, edit_msg=None, service_name="Unknown"):
     chat_id = message.chat.id
     load_countries_from_firebase()
-    ranges_list = [item.get("rid") for item in service_countries.get(service_name, []) if item.get("rid")]
-    rid = random.choice(ranges_list) if ranges_list else "8801"
+    
+    # এডমিন প্যানেল থেকে অ্যাড করা রেন্জগুলো ফিল্টার করা হচ্ছে
+    countries_pool = service_countries.get(service_name, [])
+    if not countries_pool:
+        bot.edit_message_text("⚠️ এই সার্ভিসে এডমিন কোনো রেন্জ বা দেশ এড করেনি!", chat_id, edit_msg.message_id if edit_msg else None)
+        return
 
     status_id = edit_msg.message_id if edit_msg else bot.send_message(chat_id, "⏳ PLEASE WAIT...\n🔄 NUMBER GENERATING...").message_id
-    nums, countries = [], []
-
-    for attempt in range(4):
-        try:
-            r = requests.post(f"{NUMBER_API}/numbers", json={"range": rid, "sid": "wa", "no_plus": False, "national": False}, timeout=12)
-            d = r.json()
-            if d.get("ok"):
-                nums.append(str(d.get("number")).replace("+", ""))
-                countries.append(d.get("country", "Unknown"))
-                user_ranges[chat_id] = d.get("id")
-                break
-            time.sleep(2)
-        except Exception: time.sleep(2)
+    
+    nums = []
+    countries = []
+    api_ids = []
+    
+    # প্রথম ক্লিপের মতো একই রেন্জ থেকে ২টি নাম্বার নেওয়ার প্রসেস
+    selected_target = random.choice(countries_pool)
+    rid = selected_target.get("rid", "8801")
+    c_name = selected_target.get("name", "Unknown")
+    
+    # পর পর ২টি আলাদা নাম্বার জেনারেট করার চেষ্টা করবে
+    for _ in range(2):
+        for attempt in range(5):
+            try:
+                r = requests.post(f"{NUMBER_API}/numbers", json={"range": rid, "sid": "wa", "no_plus": False, "national": False}, timeout=12)
+                d = r.json()
+                if d.get("ok"):
+                    num_str = str(d.get("number")).replace("+", "")
+                    if num_str not in nums:
+                        nums.append(num_str)
+                        countries.append(c_name)
+                        api_ids.append(d.get("id"))
+                        break
+                time.sleep(1.5)
+            except Exception:
+                time.sleep(1.5)
 
     if not nums:
         bot.edit_message_text("⚠️ এখন নাম্বার পাওয়া যাচ্ছে না, একটু পরে আবার চেষ্টা করুন।", chat_id, status_id, reply_markup=build_inline_keyboard([[make_button("🔄 আবার চেষ্টা করুন", callback_data=f"sv_{service_name}", style="danger")]]))
@@ -537,17 +501,47 @@ def process_number(message, edit_msg=None, service_name="Unknown"):
     user_numbers[chat_id] = nums
     user_countries[chat_id] = countries
     user_service[chat_id] = service_name
+    user_ranges[chat_id] = api_ids  # ২টি নাম্বারের আইডি সেভ রাখা হলো
     
-    back_cb = f"back_to_services"
-    kb = build_inline_keyboard(
-        [[make_button(f"{get_flag(countries[i])}  +{num}", style="primary", copy_text_val=f"+{num}")] for i, num in enumerate(nums)] +
-        [[make_button(f"{get_flag(countries[0])} {countries[0]}", callback_data="noop", style="success"), make_button(f"📲 {service_name.upper()}", callback_data="noop", style="success")]] +
-        [[make_button("🔄 Change Number", callback_data=f"sv_{service_name}", style="primary"), make_button("🔐 OTP GROUP", url=GROUP_URL, style="primary")], [make_button("🔙 BACK", callback_data=back_cb, style="danger")]]
-    )
+    # প্রথম ক্লিপের নিয়মে বাটনে ২টি নাম্বার সাজিয়ে পাঠানো
+    buttons_rows = []
+    for i, num in enumerate(nums):
+        flag = get_flag(countries[i])
+        buttons_rows.append([make_button(f"{flag}  +{num}", style="primary", copy_text_val=f"+{num}")])
+        
+    # নিচের স্ট্যাটাস এবং সাব-মেনু বাটন
+    buttons_rows.append([
+        make_button(f"{get_flag(countries[0])} {countries[0]}", callback_data="noop", style="success"),
+        make_button(f"📲 {service_name.upper()}", callback_data="noop", style="success")
+    ])
+    buttons_rows.append([
+        make_button("🔄 Change Number", callback_data=f"sv_{service_name}", style="primary"),
+        make_button("🔐 OTP GROUP", url=GROUP_URL, style="primary")
+    ])
+    buttons_rows.append([make_button("🔙 BACK", callback_data="back_to_services", style="danger")])
+    
+    kb = build_inline_keyboard(buttons_rows)
     bot.edit_message_text("⏳ WAITING FOR OTP...", chat_id, status_id, reply_markup=kb)
+    
+    # ওটিপি ট্র্যাকিং থ্রেড স্টার্ট করা হলো
     Thread(target=auto_check_otp, args=(chat_id, list(nums), status_id), daemon=True).start()
 
 # ===================== TEXT CORE COMMANDS =====================
+@bot.message_handler(commands=['start'])
+@safe_execute
+def start(message):
+    uid = str(message.from_user.id)
+    uname = message.from_user.username or "User"
+    register_user(uid, uname)
+    user_names[uid] = uname
+    
+    if not is_joined(message.from_user.id):
+        bot.send_message(message.chat.id, "🔗 𝐂𝐡𝐚𝐧𝐧𝐞𝐥 𝐕... 𝐑𝐞𝐪𝐮𝐢𝐫𝐞𝐝\n\n📢 আপনাকে আমাদের চ্যানেলে Join করতে হবে।", reply_markup=join_markup())
+        return
+        
+    welcome_text = "👋𓆩𓆩WELCOME TO OTP SERViCE𓆪𓆪\n ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅\n\n🤖 WELCOME TO TEAM WITH 3.0 \n\n ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅\n\n♾️ POWERED BY Shuvoᯓᡣ𐭩"
+    bot.send_message(message.chat.id, welcome_text, reply_markup=main_markup(uid))
+
 @bot.message_handler(func=lambda m: True)
 @safe_execute
 def handle_text(message):
