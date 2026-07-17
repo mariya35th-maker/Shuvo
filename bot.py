@@ -1334,7 +1334,7 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
             data = r.json()
             if data.get("ok"):
                 full_num = str(data.get("number", "")).replace("+", "")
-                country  = country_name_from_number(full_num)
+                country  = data.get("country", "Unknown")  # ✅ Nexus থেকেই পাবি
                 api_id = data.get("id")  # ✅ API ID save করুন
                 user_ranges[chat_id] = api_id  # Store করুন
                 
@@ -1368,7 +1368,7 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
             data = r.json()
             if data.get("ok"):
                 full_num2 = str(data.get("number", "")).replace("+", "")
-                country2  = country_name_from_number(full_num2)
+                country2  = data.get("country", "Unknown")  # ✅ Nexus থেকেই পাবি
                 if full_num2 not in nums:
                     nums.append(full_num2)
                     countries.append(country2)
