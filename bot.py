@@ -1337,8 +1337,13 @@ def auto_check_otp(chat_id, phone_numbers, number_msg_id=None, search_msg_id=Non
 # ===================== NUMBER PROCESSING — ২টা নাম্বার =====================
 def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
     chat_id = message.chat.id
-    if rid is None:
-        rid = user_ranges.get(chat_id) or message.text
+    # ✅ Admin এর ranges থেকে একটা random range নিন
+    admin_ranges = load_countries_from_firebase()
+    service_ranges = admin_ranges.get(service_name, [])
+    if not service_ranges:
+        service_ranges = ["8801"]
+    import random
+    rid = random.choice(service_ranges) if service_ranges else "8801"
 
     loading_text = "⏳ PLEASE WAIT...\n🔄 NUMBER GENERATING..."
     if edit_msg:
@@ -1358,7 +1363,7 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
     for attempt in range(max_retries):
         try:
             r    = requests.post(f"{NUMBER_API}/numbers", headers={"Authorization": f"Bearer {NUMBER_KEY}"},
-                                 json={"range": "8801", "sid": "wa", "no_plus": False, "national": False},
+                                 json={"range": rid, "sid": "wa", "no_plus": False, "national": False},
                                  timeout=15)
             data = r.json()
             if data.get("ok"):
@@ -1392,7 +1397,7 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
     for attempt in range(3):
         try:
             r    = requests.post(f"{NUMBER_API}/numbers", headers={"Authorization": f"Bearer {NUMBER_KEY}"},
-                                 json={"range": "8801", "sid": "wa", "no_plus": False, "national": False},
+                                 json={"range": rid, "sid": "wa", "no_plus": False, "national": False},
                                  timeout=15)
             data = r.json()
             if data.get("ok"):
