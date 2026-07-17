@@ -75,6 +75,7 @@ bot = telebot.TeleBot(BOT_TOKEN, threaded=True, num_threads=20)
 # ===================== IN-MEMORY STATE =====================
 users           = {}
 user_ranges     = {}
+user_number_ids = {}       # chat_id → [api_id1, api_id2]  (প্রতিটা নাম্বারের নিজস্ব API ID, OTP চেক করতে লাগবে)
 user_service    = {}
 user_numbers    = {}       # chat_id → [num1, num2]  (list of up to 2)
 user_countries  = {}       # chat_id → [country1, country2]
@@ -1127,19 +1128,26 @@ def infinite_otp_search(chat_id, start_numbers, search_msg_id):
             if not current_nums:
                 time.sleep(2); continue
             try:
-                # ✅ api_id get করুন
-                api_id = user_ranges.get(chat_id)
-                if not api_id:
+                # ✅ দুইটা নাম্বারেরই নিজস্ব API ID নিয়ে দুটোতেই OTP চেক করা হচ্ছে
+                ids_to_check = user_number_ids.get(chat_id, [])
+                if not ids_to_check:
                     time.sleep(2); continue
-                
-                # ✅ OTP API - সঠিক endpoints
-                r = requests.get(
-                    f"{OTP_API}/numbers/{api_id}",
-                    headers={"Authorization": f"Bearer {OTP_KEY}"},
-                    timeout=10
-                )
-                data = r.json()
-                for item in _normalize_inbox_items(data):
+
+                all_items = []
+                for api_id in ids_to_check:
+                    if not api_id:
+                        continue
+                    try:
+                        r = requests.get(
+                            f"{OTP_API}/numbers/{api_id}",
+                            headers={"Authorization": f"Bearer {OTP_KEY}"},
+                            timeout=10
+                        )
+                        all_items.extend(_normalize_inbox_items(r.json()))
+                    except Exception:
+                        continue
+
+                for item in all_items:
                     msg_id  = item.get("otp_id") or item.get("id")
                     api_num = clean_number(item.get("number", ""))
                     if msg_id in global_used_otps.get(chat_id, set()):
@@ -1248,21 +1256,28 @@ def auto_check_otp(chat_id, phone_numbers, number_msg_id=None, search_msg_id=Non
                 otp_running[chat_id] = False; return
 
             try:
-                # ✅ api_id get করুন
-                api_id = user_ranges.get(chat_id)
-                if not api_id:
+                # ✅ দুইটা নাম্বারেরই নিজস্ব API ID নিয়ে দুটোতেই OTP চেক করা হচ্ছে
+                ids_to_check = user_number_ids.get(chat_id, [])
+                if not ids_to_check:
                     time.sleep(5); continue
-                
-                # ✅ OTP API - সঠিক endpoints
-                r = requests.get(
-                    f"{OTP_API}/numbers/{api_id}",
-                    headers={"Authorization": f"Bearer {OTP_KEY}"},
-                    timeout=15
-                )
-                r.raise_for_status()
-                data = r.json()
+
+                all_items = []
+                for api_id in ids_to_check:
+                    if not api_id:
+                        continue
+                    try:
+                        r = requests.get(
+                            f"{OTP_API}/numbers/{api_id}",
+                            headers={"Authorization": f"Bearer {OTP_KEY}"},
+                            timeout=15
+                        )
+                        r.raise_for_status()
+                        all_items.extend(_normalize_inbox_items(r.json()))
+                    except Exception:
+                        continue
+
                 consecutive_errors = 0
-                for item in _normalize_inbox_items(data):
+                for item in all_items:
                     api_num = clean_number(item.get("number", ""))
                     # ২ নাম্বারের যেকোনো একটায় match করলেই চলবে
                     matched_num = None
@@ -1340,20 +1355,14 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
     
     # ✅ Firebase থেকে load করুন
     load_countries_from_firebase()
-    
-    # ✅ Service অনুযায়ী ranges নিন
-    # service_countries[service_name] = [{"name": "Bangladesh", "rid": "8801"}, ...]
-    service_ranges_data = service_countries.get(service_name, [])
-    
-    # rid গুলো extract করুন
-    ranges_list = [item.get("rid") for item in service_ranges_data if item.get("rid")]
-    
-    if not ranges_list:
-        ranges_list = ["8801"]  # Fallback
-    
-    # Random range বেছে নিন
-    import random
-    rid = random.choice(ranges_list)
+
+    # ✅ যে range (rid) caller থেকে পাঠানো হয়েছে ঠিক সেটাই ব্যবহার হবে —
+    # এখানে আর random কোনো range বেছে নেওয়া হবে না। এটাই আসল বাগ ছিল:
+    # আগে এখানে সব configured range থেকে random একটা বেছে নেওয়া হতো,
+    # ফলে ইউজার যে country/range সিলেক্ট করত সেটা উপেক্ষা করে অন্য
+    # (প্রায়ই Bangladesh) নাম্বার চলে আসত।
+    if not rid:
+        rid = "8801"  # শুধু emergency fallback, স্বাভাবিকভাবে এটা কখনো ব্যবহার হবে না
 
     loading_text = "⏳ PLEASE WAIT...\n🔄 NUMBER GENERATING..."
     if edit_msg:
@@ -1365,9 +1374,10 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
     else:
         status_id = bot.send_message(chat_id, loading_text).message_id
 
-    # ✅ ২টা নাম্বার নাও
+    # ✅ ২টা নাম্বার নাও — একই range (rid) থেকে
     nums      = []
     countries = []
+    ids       = []
     max_retries = 5
 
     for attempt in range(max_retries):
@@ -1379,12 +1389,12 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
             if data.get("ok"):
                 full_num = str(data.get("number", "")).replace("+", "")
                 country  = data.get("country", "Unknown")  # ✅ Nexus থেকেই পাবি
-                api_id = data.get("id")  # ✅ API ID save করুন
-                user_ranges[chat_id] = api_id  # Store করুন
-                
+                api_id   = data.get("id")  # ✅ এই নাম্বারটার নিজস্ব API ID
+
                 if full_num not in nums:
                     nums.append(full_num)
                     countries.append(country)
+                    ids.append(api_id)
                 break
             if attempt < max_retries - 1:
                 try:
@@ -1403,7 +1413,7 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
             pass
         return
 
-    # ২য় নাম্বার নাও
+    # ২য় নাম্বার নাও — একই range (rid) থেকে
     for attempt in range(3):
         try:
             r    = requests.post(f"{NUMBER_API}/numbers", headers={"Authorization": f"Bearer {NUMBER_KEY}"},
@@ -1413,24 +1423,28 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
             if data.get("ok"):
                 full_num2 = str(data.get("number", "")).replace("+", "")
                 country2  = data.get("country", "Unknown")  # ✅ Nexus থেকেই পাবি
+                api_id2   = data.get("id")
+
                 if full_num2 not in nums:
                     nums.append(full_num2)
                     countries.append(country2)
+                    ids.append(api_id2)
                 break
             time.sleep(2)
         except Exception:
             time.sleep(2)
 
     # State সেট করো
-    otp_running[chat_id]    = False
-    strd_running[chat_id]   = False
+    otp_running[chat_id]     = False
+    strd_running[chat_id]    = False
     time.sleep(0.5)  # পুরনো thread বন্ধ হওয়ার সময় দাও
-    user_numbers[chat_id]   = nums
-    user_countries[chat_id] = countries
-    user_ranges[chat_id]    = rid
-    user_service[chat_id]   = service_name
-    received_otps[chat_id]  = None
-    used_otps[chat_id]      = []
+    user_numbers[chat_id]    = nums
+    user_countries[chat_id]  = countries
+    user_number_ids[chat_id] = ids     # ✅ প্রতিটা নাম্বারের নিজস্ব API ID, OTP চেক করতে লাগবে
+    user_ranges[chat_id]     = rid     # ✅ এই range/rid-টাই "Change Number" চাপলে আবার ব্যবহার হবে
+    user_service[chat_id]    = service_name
+    received_otps[chat_id]   = None
+    used_otps[chat_id]       = []
 
     back_cb      = f"back_to_country_{service_name}" if service_name in FIXED_SERVICES else "back_to_services"
     country_show = countries[0] if countries else "Unknown"
