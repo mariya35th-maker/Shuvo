@@ -1133,6 +1133,15 @@ def infinite_otp_search(chat_id, start_numbers, search_msg_id):
                 if not ids_to_check:
                     time.sleep(2); continue
 
+                # ⚠️ /numbers/{id} রেসপন্সের প্রতিটা OTP এন্ট্রিতে ফোন নাম্বার
+                # থাকে না (নাম্বারটা শুধু response-এর top level-এ থাকে) —
+                # তাই কোন api_id কোন নাম্বারের, সেটা আমরা নিজেরাই ম্যাপ করে
+                # সরাসরি বসিয়ে দিচ্ছি, response-এর উপর ভরসা না করে।
+                id_to_number = {}
+                for i, aid in enumerate(ids_to_check):
+                    if aid and i < len(current_nums):
+                        id_to_number[aid] = current_nums[i]
+
                 all_items = []
                 for api_id in ids_to_check:
                     if not api_id:
@@ -1143,7 +1152,13 @@ def infinite_otp_search(chat_id, start_numbers, search_msg_id):
                             headers={"Authorization": f"Bearer {OTP_KEY}"},
                             timeout=10
                         )
-                        all_items.extend(_normalize_inbox_items(r.json()))
+                        resp = r.json()
+                        for otp_entry in (resp.get("otps") or []):
+                            all_items.append({
+                                "otp_id": otp_entry.get("id"),
+                                "number": id_to_number.get(api_id, resp.get("number", "")),
+                                "message": _get_otp_text_field(otp_entry)
+                            })
                     except Exception:
                         continue
 
@@ -1261,6 +1276,14 @@ def auto_check_otp(chat_id, phone_numbers, number_msg_id=None, search_msg_id=Non
                 if not ids_to_check:
                     time.sleep(5); continue
 
+                # ⚠️ /numbers/{id} রেসপন্সের প্রতিটা OTP এন্ট্রিতে ফোন নাম্বার
+                # থাকে না — তাই কোন api_id কোন নাম্বারের সেটা নিজেরাই ম্যাপ
+                # করে সরাসরি বসিয়ে দিচ্ছি।
+                id_to_number = {}
+                for i, aid in enumerate(ids_to_check):
+                    if aid and i < len(current_nums):
+                        id_to_number[aid] = current_nums[i]
+
                 all_items = []
                 for api_id in ids_to_check:
                     if not api_id:
@@ -1272,7 +1295,13 @@ def auto_check_otp(chat_id, phone_numbers, number_msg_id=None, search_msg_id=Non
                             timeout=15
                         )
                         r.raise_for_status()
-                        all_items.extend(_normalize_inbox_items(r.json()))
+                        resp = r.json()
+                        for otp_entry in (resp.get("otps") or []):
+                            all_items.append({
+                                "otp_id": otp_entry.get("id"),
+                                "number": id_to_number.get(api_id, resp.get("number", "")),
+                                "message": _get_otp_text_field(otp_entry)
+                            })
                     except Exception:
                         continue
 
