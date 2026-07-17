@@ -36,7 +36,7 @@ def keep_alive():
 
 # ===================== কনফিগারেশন =====================
 API_KEY      = "nx_2KxBsj-RtOzFUtVKnxXrPv_M9hZo-8UdlTXJrg"
-BOT_TOKEN    = "8738544813:AAEVERnaxuHKkYJ15XdJ0i1H1pdWpxknapQ"
+BOT_TOKEN    = "8738544813:AAEwR7NuOWH7UiYt1ezCWSaWcxPtzAnvlF4"
 
 # ✅ নাম্বার API
 NUMBER_API   = "https://v2.nexus-x.site/api/v1"
