@@ -52,7 +52,7 @@ ADMIN_ID     = "6730133217"
 GROUP_URL    = "https://t.me/otpgurup1"
 FIREBASE_URL = "https://shuvo-866aa-default-rtdb.firebaseio.com/"
 
-REQUIRED_CHANNELS = ["@range_channele", "@tem_withh"]
+REQUIRED_CHANNELS = ["@otpgurup1", "@onlineskillshub1"]
 
 FIXED_SERVICES = ["Facebook", "WhatsApp", "Telegram", "Instagram"]
 
@@ -495,8 +495,8 @@ def is_admin(uid):
 
 def join_markup():
     return build_inline_keyboard([
-        [make_button("📢 Join Channel 1", url="https://t.me/range_channele", style="primary")],
-        [make_button("📢 Join Channel 2", url="https://t.me/tem_withh",     style="primary")],
+        [make_button("📢 Join Channel 1", url="https://t.me/otpgurup1", style="primary")],
+        [make_button("📢 Join Channel 2", url="https://t.me/onlineskillshub1",     style="primary")],
         [make_button("✅ VERIFIED",        callback_data="verify_join",      style="success")],
     ])
 
@@ -1103,9 +1103,31 @@ def get_country_name_from_code(code):
 @bot.message_handler(commands=['strd'])
 def strd_command(message):
     uid = str(message.from_user.id)
+    user_id = message.from_user.id
     chat_id = message.chat.id
+    
     if strd_running.get(chat_id):
         bot.reply_to(message, "⏳ ইতিমধ্যে OTP খোঁজা চলছে!"); return
+    
+    # ✅ Channel join verification
+    not_joined = []
+    for ch in REQUIRED_CHANNELS:
+        try:
+            m = bot.get_chat_member(ch, user_id)
+            if m.status not in ["member", "administrator", "creator"]:
+                not_joined.append(ch)
+        except Exception:
+            not_joined.append(ch)
+    
+    if not_joined:
+        channels_text = "\n".join([f"📍 https://t.me/{ch.replace('@', '')}" for ch in not_joined])
+        error_msg = (
+            "❌ আপনি সব চ্যানেলে join করেননি!\n\n"
+            "চ্যানেলে join করুনঃ\n" + channels_text + "\n\n"
+            "তারপর /strd দিন"
+        )
+        bot.send_message(chat_id, error_msg)
+        return
     
     # ✅ Welcome message + চ্যানেল লিং + Live Traffic
     welcome_text = (
@@ -1835,6 +1857,8 @@ def handle_query(call):
 
     elif call.data == "adm_add_country":
         if not is_admin(uid): return
+        # ✅ Fresh load করুন Firebase থেকে
+        load_countries_from_firebase()
         try:
             bot.edit_message_text("🌍 কোন সার্ভিসে দেশ এড করবেন?", cid, call.message.message_id, reply_markup=admin_service_select_markup("addcountry"))
         except Exception:
@@ -1992,6 +2016,10 @@ def handle_query(call):
 
     elif call.data.startswith("adm_delcountry_do_"):
         if not is_admin(uid): return
+        
+        # ✅ Fresh load করুন Firebase থেকে
+        load_countries_from_firebase()
+        
         inner        = call.data.replace("adm_delcountry_do_", "")
         sep          = inner.rfind("__")
         if sep == -1: return
@@ -2001,7 +2029,14 @@ def handle_query(call):
         if idx >= len(countries): return
         deleted      = countries[idx]["name"]
         service_countries[service_name].pop(idx)
-        save_countries_to_firebase(service_name)
+        
+        # ✅ Firebase এ properly save করুন
+        try:
+            _fb_put(f"/service_data/{service_name}", service_countries[service_name])
+            print(f"✅ Firebase deleted: {service_name} → {deleted}")
+        except Exception as e:
+            print(f"❌ Firebase error: {e}")
+        
         try:
             bot.edit_message_text(
                 f"✅ {service_name} → {deleted} ডিলিট হয়েছে!\n\n🗑️ কোন দেশ ডিলিট করবেন?",
@@ -2439,24 +2474,4 @@ def handle_query(call):
         try:
             if msg_id:
                 bot.edit_message_text(rejected_text, int(target_uid), msg_id)
-            else:
-                bot.send_message(target_uid, rejected_text)
-        except Exception:
-            try:
-                bot.send_message(target_uid, rejected_text)
-            except Exception:
-                pass
-        bot.edit_message_text("❌ Rejected", cid, call.message.message_id)
-
-# ===================== BOT RUN =====================
-def run_bot():
-    keep_alive()
-    while True:
-        try:
-            bot.polling(none_stop=True, interval=0, timeout=60, long_polling_timeout=60)
-        except Exception:
-            logging.error(traceback.format_exc())
-            time.sleep(2)
-
-if __name__ == "__main__":
-    run_bot()
+else:
