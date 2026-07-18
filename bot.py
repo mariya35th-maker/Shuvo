@@ -49,7 +49,7 @@ OTP_KEY      = API_KEY
 BASE_URL     = f"{NUMBER_API}"
 HEADERS      = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
 ADMIN_ID     = "6730133217"
-GROUP_URL    = "https://t.me/tem_withh"
+GROUP_URL    = "https://t.me/otpgurup1"
 FIREBASE_URL = "https://shuvo-866aa-default-rtdb.firebaseio.com/"
 
 REQUIRED_CHANNELS = ["@range_channele", "@tem_withh"]
@@ -184,7 +184,15 @@ def update_firebase_balance(uid, amount):
     uid = str(uid)
     current = get_firebase_balance(uid)
     new_bal = round(current + amount, 2)
-    _fb_put(f"/users/{uid}/balance", new_bal)
+    
+    # ✅ Firebase এ balance save করুন
+    try:
+        _fb_put(f"/users/{uid}/balance", new_bal)
+        print(f"✅ Balance updated: {uid} → {new_bal} (added: {amount})")
+    except Exception as e:
+        print(f"❌ Firebase balance update error: {e}")
+        return current
+    
     # today stats
     today_str = str(date.today())
     if today_date.get(uid) != today_str:
@@ -211,9 +219,16 @@ def register_user(uid, name="User"):
     uid = str(uid)
     if uid not in users:
         users[uid] = {"balance": 0}
-    if not _fb_get(f"/users/{uid}/registered"):
+    
+    # ✅ Firebase এ সব কিছু save করুন
+    try:
         _fb_put(f"/users/{uid}/registered", True)
-    _fb_put(f"/users/{uid}/name", name)
+        _fb_put(f"/users/{uid}/name", name)
+        _fb_put(f"/users/{uid}/registered_at", str(datetime.now()))
+        _fb_put(f"/users/{uid}/balance", get_firebase_balance(uid))  # Current balance
+        print(f"✅ User registered: {uid} → {name}")
+    except Exception as e:
+        print(f"❌ Firebase error: {e}")
 
 def load_all_users_from_firebase():
     data = _fb_get("/users")
@@ -1612,6 +1627,10 @@ def handle_admin_state(message, uid, txt):
         service_name = state.get("service")
         country_name = state.get("country")
         rid          = txt
+        
+        # ✅ Fresh load করুন Firebase থেকে
+        load_countries_from_firebase()
+        
         countries    = service_countries[service_name]
         found = False
         for c in countries:
@@ -1619,7 +1638,15 @@ def handle_admin_state(message, uid, txt):
                 c["rid"] = rid; found = True; break
         if not found:
             countries.append({"name": country_name, "rid": rid})
-        save_countries_to_firebase(service_name)
+        
+        # ✅ Firebase এ save করুন properly
+        try:
+            data_to_save = service_countries[service_name]
+            _fb_put(f"/service_data/{service_name}", data_to_save)
+            print(f"✅ Firebase saved: {service_name} → {data_to_save}")
+        except Exception as e:
+            print(f"❌ Firebase error: {e}")
+        
         admin_state.pop(uid, None)
         bot.send_message(
             cid,
@@ -1950,6 +1977,10 @@ def handle_query(call):
         if not is_admin(uid): return
         service_name = call.data.replace("adm_delcountry_", "")
         if service_name not in FIXED_SERVICES: return
+        
+        # ✅ Fresh load করুন
+        load_countries_from_firebase()
+        
         try:
             bot.edit_message_text(
                 f"🗑️ {service_name} — কোন দেশ ডিলিট করবেন?",
