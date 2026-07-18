@@ -36,8 +36,8 @@ def keep_alive():
 
 # ===================== কনফিগারেশন =====================
 API_KEY      = "nx_2KxBsj-RtOzFUtVKnxXrPv_M9hZo-8UdlTXJrg"
-BOT_TOKEN    = "8738544813:AAE82mLikrBAnmW1IN6WPMv7Jiw8Rlk924U"
-
+API_KEY      = "nx_I0puoaKJBgjjv618iqRKMrylA2zZQFgaJqD3NQ"
+BOT_TOKEN    = "8631753930:AAF2eJ-_dYXPEiJwtv8fLGfIaNeXB6zPliA"
 # ✅ নাম্বার API
 NUMBER_API   = "https://v2.nexus-x.site/api/v1"
 NUMBER_KEY   = API_KEY
@@ -48,7 +48,7 @@ OTP_KEY      = API_KEY
 
 BASE_URL     = f"{NUMBER_API}"
 HEADERS      = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
-ADMIN_ID     = "6136815573"
+ADMIN_ID     = "6730133217"
 GROUP_URL    = "https://t.me/tem_withh"
 FIREBASE_URL = "https://shuvo-866aa-default-rtdb.firebaseio.com/"
 
@@ -1092,13 +1092,17 @@ def strd_command(message):
     if strd_running.get(chat_id):
         bot.reply_to(message, "⏳ ইতিমধ্যে OTP খোঁজা চলছে!"); return
     
-    # ✅ Welcome message দাও
+    # ✅ Welcome message + চ্যানেল লিং + Live Traffic
     welcome_text = (
         "👋𓆩𓆩WELCOME TO OTP SERViCE𓆪𓆪\n"
         " ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅\n\n"
         "🤖 WELCOME TO TEAM WITH 3.0 \n\n"
         " ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅\n\n"
-        "♾️ POWERED BY Shuvoᯓᡣ𐭩"
+        "♾️ POWERED BY Shuvoᯓᡣ𐭩\n\n"
+        "✅ চ্যানেলে যোগ দিনঃ\n"
+        "📍 https://t.me/onlineskillshub1\n"
+        "📍 https://t.me/otpgurup1\n\n"
+        "🔴 Live Traffic: https://t.me/otpgurup1"
     )
     bot.send_message(chat_id, welcome_text, reply_markup=main_markup(uid))
 
