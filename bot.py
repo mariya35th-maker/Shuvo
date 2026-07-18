@@ -1634,18 +1634,37 @@ def handle_admin_state(message, uid, txt):
         service_name = state.get("service")
         country_name = state.get("country")
         rid          = txt
-        countries    = service_countries[service_name]
+        
+        # ✅ Fresh load করুন Firebase থেকে সবসময়
+        load_countries_from_firebase()
+        
+        countries    = service_countries.get(service_name, [])
         found = False
         for c in countries:
-            if c["name"].lower() == country_name.lower():
-                c["rid"] = rid; found = True; break
+            if c.get("name", "").lower() == country_name.lower():
+                c["rid"] = rid
+                found = True
+                break
+        
         if not found:
             countries.append({"name": country_name, "rid": rid})
-        save_countries_to_firebase(service_name)
+        
+        # ✅ Firebase এ DIRECTLY save করুন
+        try:
+            _fb_put(f"/service_data/{service_name}", countries)
+            print(f"✅ Firebase saved: {service_name} → {countries}")
+        except Exception as e:
+            print(f"❌ Firebase error: {e}")
+            bot.send_message(cid, f"❌ Firebase save error: {e}")
+            return
+        
+        # ✅ Memory এ update করুন
+        service_countries[service_name] = countries
+        
         admin_state.pop(uid, None)
         bot.send_message(
             cid,
-            f"✅ সফলভাবে এড হয়েছে!\n🌍 Service : {service_name}\n🌏 Country : {country_name}\n🔢 Range   : {rid}",
+            f"✅ সফলভাবে এড হয়েছে!\n🌍 Service : {service_name}\n🌏 Country : {country_name}\n🔢 Range   : {rid}\n\n✅ Firebase এ Save হয়েছে!",
             reply_markup=admin_panel_markup()
         )
 
@@ -1822,6 +1841,8 @@ def handle_query(call):
     elif call.data == "adm_cancel":
         admin_state.pop(uid_str, None)
         withdraw_data.pop(uid, None)
+        # ✅ Fresh load করুন Firebase থেকে - latest data দেখাতে
+        load_countries_from_firebase()
         try:
             bot.edit_message_text("❌ বাতিল করা হয়েছে।", cid, call.message.message_id)
         except Exception:
@@ -1830,6 +1851,8 @@ def handle_query(call):
 
     elif call.data == "adm_add_country":
         if not is_admin(uid): return
+        # ✅ Fresh load করুন Firebase থেকে
+        load_countries_from_firebase()
         try:
             bot.edit_message_text("🌍 কোন সার্ভিসে দেশ এড করবেন?", cid, call.message.message_id, reply_markup=admin_service_select_markup("addcountry"))
         except Exception:
@@ -1959,6 +1982,8 @@ def handle_query(call):
 
     elif call.data == "adm_del_country":
         if not is_admin(uid): return
+        # ✅ Fresh load করুন Firebase থেকে
+        load_countries_from_firebase()
         try:
             bot.edit_message_text(
                 "🗑️ কোন সার্ভিস থেকে দেশ ডিলিট করবেন?",
@@ -1970,6 +1995,10 @@ def handle_query(call):
 
     elif call.data.startswith("adm_delcountry_") and not call.data.startswith("adm_delcountry_do_"):
         if not is_admin(uid): return
+        
+        # ✅ Fresh load করুন Firebase থেকে
+        load_countries_from_firebase()
+        
         service_name = call.data.replace("adm_delcountry_", "")
         if service_name not in FIXED_SERVICES: return
         try:
@@ -1983,6 +2012,10 @@ def handle_query(call):
 
     elif call.data.startswith("adm_delcountry_do_"):
         if not is_admin(uid): return
+        
+        # ✅ Fresh load করুন Firebase থেকে
+        load_countries_from_firebase()
+        
         inner        = call.data.replace("adm_delcountry_do_", "")
         sep          = inner.rfind("__")
         if sep == -1: return
@@ -1992,10 +2025,19 @@ def handle_query(call):
         if idx >= len(countries): return
         deleted      = countries[idx]["name"]
         service_countries[service_name].pop(idx)
-        save_countries_to_firebase(service_name)
+        
+        # ✅ Firebase এ DIRECTLY save করুন
+        try:
+            _fb_put(f"/service_data/{service_name}", service_countries[service_name])
+            print(f"✅ Firebase deleted: {service_name} → {deleted}")
+        except Exception as e:
+            print(f"❌ Firebase delete error: {e}")
+            bot.send_message(cid, f"❌ Firebase error: {e}")
+            return
+        
         try:
             bot.edit_message_text(
-                f"✅ {service_name} → {deleted} ডিলিট হয়েছে!\n\n🗑️ কোন দেশ ডিলিট করবেন?",
+                f"✅ {service_name} → {deleted} ডিলিট হয়েছে! (Firebase এ deleted)\n\n🗑️ আর কোন দেশ ডিলিট করবেন?",
                 cid, call.message.message_id,
                 reply_markup=admin_del_country_list_markup(service_name)
             )
@@ -2136,12 +2178,17 @@ def handle_query(call):
             bot.send_message(cid, msg_text, reply_markup=balance_markup(balance))
 
     elif call.data == "back_to_services":
+        # ✅ Fresh load করুন Firebase থেকে
+        load_countries_from_firebase()
         try:
             bot.edit_message_text("📱 যে সার্ভিসের নাম্বার প্রয়োজন তা\nসিলেক্ট করুন:", cid, call.message.message_id, reply_markup=service_menu_markup())
         except Exception:
             bot.send_message(cid, "📱 যে সার্ভিসের নাম্বার প্রয়োজন তা\nসিলেক্ট করুন:", reply_markup=service_menu_markup())
 
     elif call.data.startswith("back_to_country_"):
+        # ✅ Fresh load করুন Firebase থেকে
+        load_countries_from_firebase()
+        
         service_name = call.data.replace("back_to_country_", "")
         if service_name not in FIXED_SERVICES:
             service_name = user_service.get(cid, "")
