@@ -144,13 +144,20 @@ def _fb_get(path):
 
 def _fb_put(path, data):
     try:
-        session.put(
+        r = session.put(
             f"{FIREBASE_URL}{path}.json",
             data=json.dumps(data, ensure_ascii=False),
             timeout=10
         )
-    except Exception:
-        pass
+        if r.status_code in [200, 201]:
+            print(f"✅ Firebase saved: {path}")
+            return True
+        else:
+            print(f"❌ Firebase error: {r.status_code} - {r.text}")
+            return False
+    except Exception as e:
+        print(f"❌ Firebase put error: {e}")
+        return False
 
 def _fb_delete(path):
     try:
@@ -227,7 +234,7 @@ def load_all_users_from_firebase():
 
 def load_countries_from_firebase():
     for sname in FIXED_SERVICES:
-        data = _fb_get(f"/service_data/{sname}")
+        data = _fb_get(f"/admin_ranges/{sname}")
         if isinstance(data, list):
             service_countries[sname] = [c for c in data if isinstance(c, dict) and "name" in c and "rid" in c]
         elif isinstance(data, dict):
@@ -236,7 +243,7 @@ def load_countries_from_firebase():
             service_countries[sname] = []
 
 def save_countries_to_firebase(service_name):
-    _fb_put(f"/service_data/{service_name}", service_countries[service_name])
+    _fb_put(f"/admin_ranges/{service_name}", service_countries[service_name])
 
 # ===================== STARTUP =====================
 load_all_users_from_firebase()
@@ -1651,7 +1658,7 @@ def handle_admin_state(message, uid, txt):
         
         # ✅ Firebase এ DIRECTLY save করুন
         try:
-            _fb_put(f"/service_data/{service_name}", countries)
+            _fb_put(f"/admin_ranges/{service_name}", countries)
             print(f"✅ Firebase saved: {service_name} → {countries}")
         except Exception as e:
             print(f"❌ Firebase error: {e}")
@@ -2028,7 +2035,7 @@ def handle_query(call):
         
         # ✅ Firebase এ DIRECTLY save করুন
         try:
-            _fb_put(f"/service_data/{service_name}", service_countries[service_name])
+            _fb_put(f"/admin_ranges/{service_name}", service_countries[service_name])
             print(f"✅ Firebase deleted: {service_name} → {deleted}")
         except Exception as e:
             print(f"❌ Firebase delete error: {e}")
