@@ -1423,7 +1423,7 @@ def handle_text(message):
     elif txt == "LIVE TRAFFIC":
         traffic_intro = "📡 𝐋𝐢𝐯𝐞 𝐓𝐫𝐚𝐟𝐟𝐢𝐂 𝐂𝐡𝐚𝐧𝐧𝐞𝐥 👇"
         traffic_kb = build_inline_keyboard([
-            [make_button("📊 LIVE TRAFFIC", url="https://t.me/tem_withh", style="primary")],
+            [make_button("📊 LIVE TRAFFIC", url="https://t.me/otpgurup1", style="primary")],
             [make_button("🔵 GET NUMBER", callback_data="get_number_menu", style="success")],
             [make_button("❌ CANCEL", callback_data="back_to_main", style="danger")],
         ])
