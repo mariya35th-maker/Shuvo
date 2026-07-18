@@ -50,7 +50,7 @@ BASE_URL     = f"{NUMBER_API}"
 HEADERS      = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
 ADMIN_ID     = "6730133217"
 GROUP_URL    = "https://t.me/otpgurup1"
-FIREBASE_URL = "https://shuvo-866aa-default-rtdb.firebaseio.com/"
+FIREBASE_URL = "https://my-otp-bot-e8ef9-default-rtdb.firebaseio.com/"
 
 REQUIRED_CHANNELS = ["@otpgurup1", "@onlineskillshub1"]
 
