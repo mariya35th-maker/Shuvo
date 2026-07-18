@@ -42,7 +42,7 @@ ADMIN_ID     = "6730133217"
 GROUP_URL    = "https://t.me/onlineskillshub1"
 FIREBASE_URL = "https://shuvo-866aa-default-rtdb.firebaseio.com/"
 
-REQUIRED_CHANNELS = ["@tem/onlineskillshub1", "@t.me/otpgurup1"]
+REQUIRED_CHANNELS = ["@onlineskillshub1", "@otpgurup1"]
 
 FIXED_SERVICES = ["Facebook", "WhatsApp", "Telegram", "Instagram"]
 
