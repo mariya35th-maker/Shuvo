@@ -4,7 +4,6 @@ import telebot
 import requests
 import json
 import pycountry
-import phonenumbers
 import threading
 import time
 import random
@@ -35,24 +34,15 @@ def keep_alive():
     t.start()
 
 # ===================== কনফিগারেশন =====================
-API_KEY      = "nx_2KxBsj-RtOzFUtVKnxXrPv_M9hZo-8UdlTXJrg"
-API_KEY      = "nx_I0puoaKJBgjjv618iqRKMrylA2zZQFgaJqD3NQ"
+API_KEY      = "MUYZ1SXYKG8"
 BOT_TOKEN    = "8631753930:AAF2eJ-_dYXPEiJwtv8fLGfIaNeXB6zPliA"
-# ✅ নাম্বার API
-NUMBER_API   = "https://v2.nexus-x.site/api/v1"
-NUMBER_KEY   = API_KEY
-
-# ✅ OTP API
-OTP_API      = "https://v2.nexus-x.site/api/v1"
-OTP_KEY      = API_KEY
-
-BASE_URL     = f"{NUMBER_API}"
-HEADERS      = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
+BASE_URL     = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api"
+HEADERS      = {"mauthapi": API_KEY}
 ADMIN_ID     = "6730133217"
-GROUP_URL    = "https://t.me/otpgurup1"
-FIREBASE_URL = "https://my-otp-bot-e8ef9-default-rtdb.firebaseio.com/"
+GROUP_URL    = "https://t.me/onlineskillshub1"
+FIREBASE_URL = "https://shuvo-866aa-default-rtdb.firebaseio.com/"
 
-REQUIRED_CHANNELS = ["@otpgurup1", "@onlineskillshub1"]
+REQUIRED_CHANNELS = ["@tem/onlineskillshub1", "@t.me/otpgurup1"]
 
 FIXED_SERVICES = ["Facebook", "WhatsApp", "Telegram", "Instagram"]
 
@@ -75,7 +65,6 @@ bot = telebot.TeleBot(BOT_TOKEN, threaded=True, num_threads=20)
 # ===================== IN-MEMORY STATE =====================
 users           = {}
 user_ranges     = {}
-user_number_ids = {}       # chat_id → [api_id1, api_id2]  (প্রতিটা নাম্বারের নিজস্ব API ID, OTP চেক করতে লাগবে)
 user_service    = {}
 user_numbers    = {}       # chat_id → [num1, num2]  (list of up to 2)
 user_countries  = {}       # chat_id → [country1, country2]
@@ -144,20 +133,13 @@ def _fb_get(path):
 
 def _fb_put(path, data):
     try:
-        r = session.put(
+        session.put(
             f"{FIREBASE_URL}{path}.json",
             data=json.dumps(data, ensure_ascii=False),
             timeout=10
         )
-        if r.status_code in [200, 201]:
-            print(f"✅ Firebase saved: {path}")
-            return True
-        else:
-            print(f"❌ Firebase error: {r.status_code} - {r.text}")
-            return False
-    except Exception as e:
-        print(f"❌ Firebase put error: {e}")
-        return False
+    except Exception:
+        pass
 
 def _fb_delete(path):
     try:
@@ -234,7 +216,7 @@ def load_all_users_from_firebase():
 
 def load_countries_from_firebase():
     for sname in FIXED_SERVICES:
-        data = _fb_get(f"/admin_ranges/{sname}")
+        data = _fb_get(f"/service_data/{sname}")
         if isinstance(data, list):
             service_countries[sname] = [c for c in data if isinstance(c, dict) and "name" in c and "rid" in c]
         elif isinstance(data, dict):
@@ -243,7 +225,7 @@ def load_countries_from_firebase():
             service_countries[sname] = []
 
 def save_countries_to_firebase(service_name):
-    _fb_put(f"/admin_ranges/{service_name}", service_countries[service_name])
+    _fb_put(f"/service_data/{service_name}", service_countries[service_name])
 
 # ===================== STARTUP =====================
 load_all_users_from_firebase()
@@ -271,8 +253,11 @@ def extract_otp(message_text, phone_number=None):
     phone_digits = clean_number(phone_number) if phone_number else ""
 
     # নোট: re.ASCII ব্যবহার করা হচ্ছে কারণ Python-এ ডিফল্টভাবে \b (word boundary)
-    # Unicode-aware — জাপানি/চাইনিজ/কোরিয়ান অক্ষরকেও "word character" ধরে নেয়,
-    # ফলে ভুল OTP বের হতো। re.ASCII দিলে শুধু ASCII অক্ষরকেই word character ধরবে।
+    # Unicode-aware — জাপানি/চাইনিজ/কোরিয়ান অক্ষরকেও "word character" ধরে নেয়।
+    # ফলে "09977がFacebook..." এর মতো মেসেজে (OTP-এর ঠিক পরেই কোনো স্পেস ছাড়া
+    # CJK অক্ষর থাকলে) boundary ধরতে ব্যর্থ হতো, আর ভুল OTP বের হতো।
+    # re.ASCII দিলে শুধু ASCII অক্ষরকেই word character ধরবে, তাই boundary
+    # সঠিকভাবে কাজ করবে।
 
     # STEP 1: "975-802" বা "975 802" এর মতো dash/space দেওয়া OTP ধরো
     dashed_matches = re.findall(r'\b(\d{3,5}[-\s]\d{3,5})\b', message_text, re.ASCII)
@@ -391,24 +376,6 @@ COUNTRY_NAME_MAP = {
     "saint vincent": "VC", "micronesia": "FM", "curacao": "CW",
 }
 
-def country_name_from_number(full_number):
-    """
-    +৮৮০... এর মতো ফুল ফোন নাম্বার থেকে দেশের নাম বের করে।
-    নতুন API (nexus-x.site) রেসপন্সে সরাসরি 'country' ফিল্ড পাঠায় না
-    (পুরনো API পাঠাতো), তাই নাম্বারের calling code থেকে বের করা হচ্ছে।
-    """
-    try:
-        num_str = full_number if str(full_number).startswith("+") else f"+{full_number}"
-        parsed = phonenumbers.parse(num_str, None)
-        region = phonenumbers.region_code_for_number(parsed)
-        if region:
-            c = pycountry.countries.get(alpha_2=region)
-            if c:
-                return c.name
-    except Exception:
-        pass
-    return "Unknown"
-
 def get_flag(country_name):
     if not country_name:
         return ""
@@ -429,47 +396,6 @@ def get_flag(country_name):
         pass
     return ""
 
-def _get_otp_text_field(item):
-    """nexus-x.site OTP এন্ট্রিতে টেক্সট কয়েকটা alias নামে আসতে পারে (body/text/full_text/console)"""
-    return item.get("text") or item.get("body") or item.get("full_text") or item.get("console") or ""
-
-def _normalize_inbox_items(data):
-    """
-    /inbox এন্ডপয়েন্টের ঠিক রেসপন্স শেপ নিশ্চিত না, তাই কয়েকটা সম্ভাব্য
-    ফরম্যাট চেষ্টা করে পুরনো কোডের সাথে মেলানো (id, number, message) শেপে
-    normalize করে দেওয়া হচ্ছে — যাতে নিচের OTP-ম্যাচিং লজিক অপরিবর্তিত থাকে।
-    """
-    items = []
-    if isinstance(data, list):
-        raw = data
-    elif isinstance(data, dict):
-        raw = data.get("data")
-        if isinstance(raw, dict):
-            raw = raw.get("otps", [])
-        if not isinstance(raw, list):
-            raw = data.get("otps") or data.get("result") or data.get("inbox") or []
-    else:
-        raw = []
-
-    for entry in raw:
-        if not isinstance(entry, dict):
-            continue
-        if "otps" in entry:  # নাম্বার-অবজেক্ট, ভেতরে otps লিস্ট
-            number = entry.get("number", "")
-            for sub in entry.get("otps", []):
-                items.append({
-                    "otp_id": sub.get("id"),
-                    "number": number,
-                    "message": _get_otp_text_field(sub)
-                })
-        else:  # সরাসরি একটা OTP এন্ট্রি
-            items.append({
-                "otp_id": entry.get("id") or entry.get("otp_id"),
-                "number": entry.get("number", ""),
-                "message": _get_otp_text_field(entry)
-            })
-    return items
-
 def is_joined(user_id):
     try:
         for ch in REQUIRED_CHANNELS:
@@ -487,8 +413,8 @@ def is_admin(uid):
 
 def join_markup():
     return build_inline_keyboard([
-        [make_button("📢 Join Channel 1", url="https://t.me/otpgurup1", style="primary")],
-        [make_button("📢 Join Channel 2", url="https://t.me/onlineskillshub1",     style="primary")],
+        [make_button("📢 Join Channel 1", url="https://t.me/onlineskillshub1", style="primary")],
+        [make_button("📢 Join Channel 2", url="https://t.me/otpgurup1",     style="primary")],
         [make_button("✅ VERIFIED",        callback_data="verify_join",      style="success")],
     ])
 
@@ -1094,46 +1020,14 @@ def get_country_name_from_code(code):
 # ===================== LIVE TRAFFIC DISPLAY =====================
 @bot.message_handler(commands=['strd'])
 def strd_command(message):
-    uid = str(message.from_user.id)
-    user_id = message.from_user.id
-    chat_id = message.chat.id
-    
+    chat_id  = message.chat.id
+    nums     = user_numbers.get(chat_id, [])
+    if not nums:
+        bot.reply_to(message, "❌ আগে একটি নাম্বার নিন!"); return
     if strd_running.get(chat_id):
         bot.reply_to(message, "⏳ ইতিমধ্যে OTP খোঁজা চলছে!"); return
-    
-    # ✅ Channel join verification
-    not_joined = []
-    for ch in REQUIRED_CHANNELS:
-        try:
-            m = bot.get_chat_member(ch, user_id)
-            if m.status not in ["member", "administrator", "creator"]:
-                not_joined.append(ch)
-        except Exception:
-            not_joined.append(ch)
-    
-    if not_joined:
-        channels_text = "\n".join([f"📍 https://t.me/{ch.replace('@', '')}" for ch in not_joined])
-        error_msg = (
-            "❌ আপনি সব চ্যানেলে join করেননি!\n\n"
-            "চ্যানেলে join করুনঃ\n" + channels_text + "\n\n"
-            "তারপর /strd দিন"
-        )
-        bot.send_message(chat_id, error_msg)
-        return
-    
-    # ✅ Welcome message + চ্যানেল লিং + Live Traffic
-    welcome_text = (
-        "👋𓆩𓆩WELCOME TO OTP SERViCE𓆪𓆪\n"
-        " ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅\n\n"
-        "🤖 WELCOME TO TEAM WITH 3.0 \n\n"
-        " ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅\n\n"
-        "♾️ POWERED BY Shuvoᯓᡣ𐭩\n\n"
-        "✅ চ্যানেলে যোগ দিনঃ\n"
-        "📍 https://t.me/onlineskillshub1\n"
-        "📍 https://t.me/otpgurup1\n\n"
-        "🔴 Live Traffic: https://t.me/otpgurup1"
-    )
-    bot.send_message(chat_id, welcome_text, reply_markup=main_markup(uid))
+    search_msg = bot.send_message(chat_id, "🔍 OTP SEARCHING (∞)...\n⏳ Number change না হওয়া পর্যন্ত চালু...")
+    threading.Thread(target=infinite_otp_search, args=(chat_id, list(nums), search_msg.message_id), daemon=True).start()
 
 def infinite_otp_search(chat_id, start_numbers, search_msg_id):
     strd_running[chat_id] = True
@@ -1161,100 +1055,70 @@ def infinite_otp_search(chat_id, start_numbers, search_msg_id):
             if not current_nums:
                 time.sleep(2); continue
             try:
-                # ✅ দুইটা নাম্বারেরই নিজস্ব API ID নিয়ে দুটোতেই OTP চেক করা হচ্ছে
-                ids_to_check = user_number_ids.get(chat_id, [])
-                if not ids_to_check:
-                    time.sleep(2); continue
-
-                # ⚠️ /numbers/{id} রেসপন্সের প্রতিটা OTP এন্ট্রিতে ফোন নাম্বার
-                # থাকে না (নাম্বারটা শুধু response-এর top level-এ থাকে) —
-                # তাই কোন api_id কোন নাম্বারের, সেটা আমরা নিজেরাই ম্যাপ করে
-                # সরাসরি বসিয়ে দিচ্ছি, response-এর উপর ভরসা না করে।
-                id_to_number = {}
-                for i, aid in enumerate(ids_to_check):
-                    if aid and i < len(current_nums):
-                        id_to_number[aid] = current_nums[i]
-
-                all_items = []
-                for api_id in ids_to_check:
-                    if not api_id:
-                        continue
-                    try:
-                        r = requests.get(
-                            f"{OTP_API}/numbers/{api_id}",
-                            headers={"Authorization": f"Bearer {OTP_KEY}"},
-                            timeout=10
-                        )
-                        resp = r.json()
-                        for otp_entry in (resp.get("otps") or []):
-                            all_items.append({
-                                "otp_id": otp_entry.get("id"),
-                                "number": id_to_number.get(api_id, resp.get("number", "")),
-                                "message": _get_otp_text_field(otp_entry)
-                            })
-                    except Exception:
-                        continue
-
-                for item in all_items:
-                    msg_id  = item.get("otp_id") or item.get("id")
-                    api_num = clean_number(item.get("number", ""))
-                    if msg_id in global_used_otps.get(chat_id, set()):
-                        continue
-                    # check against all current numbers
-                    matched_num = None
-                    matched_idx = None
-                    for idx, num in enumerate(current_nums):
-                        cur = clean_number(num)
-                        if api_num in cur or cur in api_num:
-                            matched_num = num; matched_idx = idx; break
-                    if not matched_num:
-                        continue
-                    if msg_id in used_otps.get(chat_id, []):
-                        continue
-                    if chat_id not in used_otps:
-                        used_otps[chat_id] = []
-                    if chat_id not in global_used_otps:
-                        global_used_otps[chat_id] = set()
-                    used_otps[chat_id].append(msg_id)
-                    global_used_otps[chat_id].add(msg_id)
-                    otp = extract_otp(item.get("message", ""), matched_num)
-                    if otp is None:
-                        continue
+                r    = session.get(f"{BASE_URL}/success-otp", timeout=10)
+                data = r.json()
+                if data.get("meta", {}).get("code") == 200:
+                    for item in data.get("data", {}).get("otps", []):
+                        msg_id  = item.get("otp_id") or item.get("id")
+                        api_num = clean_number(item.get("number", ""))
+                        if msg_id in global_used_otps.get(chat_id, set()):
+                            continue
+                        # check against all current numbers
+                        matched_num = None
+                        matched_idx = None
+                        for idx, num in enumerate(current_nums):
+                            cur = clean_number(num)
+                            if api_num in cur or cur in api_num:
+                                matched_num = num; matched_idx = idx; break
+                        if not matched_num:
+                            continue
+                        if msg_id in used_otps.get(chat_id, []):
+                            continue
+                        if chat_id not in used_otps:
+                            used_otps[chat_id] = []
+                        if chat_id not in global_used_otps:
+                            global_used_otps[chat_id] = set()
+                        used_otps[chat_id].append(msg_id)
+                        global_used_otps[chat_id].add(msg_id)
+                        otp = extract_otp(item.get("message", ""), matched_num)
+                        if otp is None:
+                            continue
                         
-                        continue
+                            continue
                         
-                    uid_str = str(chat_id)
-                    # ✅ Firebase থেকে dynamic price পড়ুন
-                    current_price = get_otp_price_from_firebase()
-                    new_bal = update_firebase_balance(uid_str, current_price)
+                        uid_str = str(chat_id)
+                        # ✅ Firebase থেকে dynamic price পড়ুন
+                        current_price = get_otp_price_from_firebase()
+                        new_bal = update_firebase_balance(uid_str, current_price)
                         
-                    # ✅ নাম্বার কেনার সময়ই যে country সেভ করা হয়েছিল সেটা থেকে flag বের করা
-                    country_list = user_countries.get(chat_id, [])
-                    detected_country = country_list[matched_idx] if (matched_idx is not None and matched_idx < len(country_list)) else None
-                    flag_emoji = get_flag(detected_country) if detected_country else None
+                        # ✅ নাম্বার কেনার সময়ই যে country সেভ করা হয়েছিল সেটা থেকে flag বের করা
+                        # (SMS টেক্সটে flag emoji খোঁজা ভুল ছিল, কারণ SMS-এ কখনো flag emoji থাকে না)
+                        country_list = user_countries.get(chat_id, [])
+                        detected_country = country_list[matched_idx] if (matched_idx is not None and matched_idx < len(country_list)) else None
+                        flag_emoji = get_flag(detected_country) if detected_country else None
                         
-                    # ✅ LIVE TRAFFIC আপডেট করা
-                    service = user_service.get(chat_id, "Others")
-                    if flag_emoji and detected_country:
-                        update_traffic(service, detected_country, flag_emoji)
+                        # ✅ LIVE TRAFFIC আপডেট করা
+                        service = user_service.get(chat_id, "Others")
+                        if flag_emoji and detected_country:
+                            update_traffic(service, detected_country, flag_emoji)
                         
-                    received_otps[chat_id] = otp
-                    # Display এ use করার জন্য
-                    display_flag = flag_emoji if flag_emoji else "🌍"
-                    display_country = detected_country if detected_country else "Unknown"
-                    text    = f"╭──────────────╮\n📩 {service} OTP  ✅\n╰──────────────╯\n{display_flag}  : {matched_num}\n💸 𝐄𝐚𝐫𝐧𝐞𝐝 : {current_price:.2f} ৳\n✅ 𝐒𝐭𝐚𝐭𝐮𝐬 : 𝐒𝐮𝐜𝐜𝐞𝐬𝐬"
-                    kb = otp_result_markup(otp)
-                    try:
-                        bot.edit_message_text(text, chat_id, active_msg_id, reply_markup=kb)
-                    except Exception:
+                        received_otps[chat_id] = otp
+                        # Display এ use করার জন্য
+                        display_flag = flag_emoji if flag_emoji else "🌍"
+                        display_country = detected_country if detected_country else "Unknown"
+                        text    = f"╭──────────────╮\n📩 {service} OTP  ✅\n╰──────────────╯\n{display_flag}  : {matched_num}\n💸 𝐄𝐚𝐫𝐧𝐞𝐝 : {current_price:.2f} ৳\n✅ 𝐒𝐭𝐚𝐭𝐮𝐬 : 𝐒𝐮𝐜𝐜𝐞𝐬𝐬"
+                        kb = otp_result_markup(otp)
                         try:
-                            bot.send_message(chat_id, text, reply_markup=kb)
+                            bot.edit_message_text(text, chat_id, active_msg_id, reply_markup=kb)
+                        except Exception:
+                            try:
+                                bot.send_message(chat_id, text, reply_markup=kb)
+                            except Exception:
+                                pass
+                        try:
+                            active_msg_id = bot.send_message(chat_id, "🔍 Next OTP SEARCHING (∞)...\n⏳ Waiting...").message_id
                         except Exception:
                             pass
-                    try:
-                        active_msg_id = bot.send_message(chat_id, "🔍 Next OTP SEARCHING (∞)...\n⏳ Waiting...").message_id
-                    except Exception:
-                        pass
             except Exception:
                 pass
             time.sleep(2)
@@ -1304,103 +1168,74 @@ def auto_check_otp(chat_id, phone_numbers, number_msg_id=None, search_msg_id=Non
                 otp_running[chat_id] = False; return
 
             try:
-                # ✅ দুইটা নাম্বারেরই নিজস্ব API ID নিয়ে দুটোতেই OTP চেক করা হচ্ছে
-                ids_to_check = user_number_ids.get(chat_id, [])
-                if not ids_to_check:
-                    time.sleep(5); continue
-
-                # ⚠️ /numbers/{id} রেসপন্সের প্রতিটা OTP এন্ট্রিতে ফোন নাম্বার
-                # থাকে না — তাই কোন api_id কোন নাম্বারের সেটা নিজেরাই ম্যাপ
-                # করে সরাসরি বসিয়ে দিচ্ছি।
-                id_to_number = {}
-                for i, aid in enumerate(ids_to_check):
-                    if aid and i < len(current_nums):
-                        id_to_number[aid] = current_nums[i]
-
-                all_items = []
-                for api_id in ids_to_check:
-                    if not api_id:
-                        continue
-                    try:
-                        r = requests.get(
-                            f"{OTP_API}/numbers/{api_id}",
-                            headers={"Authorization": f"Bearer {OTP_KEY}"},
-                            timeout=15
-                        )
-                        r.raise_for_status()
-                        resp = r.json()
-                        for otp_entry in (resp.get("otps") or []):
-                            all_items.append({
-                                "otp_id": otp_entry.get("id"),
-                                "number": id_to_number.get(api_id, resp.get("number", "")),
-                                "message": _get_otp_text_field(otp_entry)
-                            })
-                    except Exception:
-                        continue
-
+                r = session.get(f"{BASE_URL}/success-otp", timeout=15)
+                r.raise_for_status()
+                data = r.json()
                 consecutive_errors = 0
-                for item in all_items:
-                    api_num = clean_number(item.get("number", ""))
-                    # ২ নাম্বারের যেকোনো একটায় match করলেই চলবে
-                    matched_num = None
-                    matched_idx = None
-                    for idx, num in enumerate(phone_numbers):
-                        my_num = clean_number(num)
-                        if api_num and my_num and (api_num in my_num or my_num in api_num):
-                            matched_num = num; matched_idx = idx; break
-                    if not matched_num:
-                        continue
-                    msg_id = item.get("otp_id") or item.get("id")
-                    if not msg_id:
-                        continue
-                    if msg_id in global_used_otps[chat_id]:
-                        continue
-                    if msg_id in used_otps[chat_id]:
-                        continue
-                    used_otps[chat_id].append(msg_id)
-                    global_used_otps[chat_id].add(msg_id)
-                    otp = extract_otp(item.get("message", ""), matched_num)
-                    if otp is None:
-                        continue
+                if data.get("meta", {}).get("code") == 200:
+                    for item in data.get("data", {}).get("otps", []):
+                        api_num = clean_number(item.get("number", ""))
+                        # ২ নাম্বারের যেকোনো একটায় match করলেই চলবে
+                        matched_num = None
+                        matched_idx = None
+                        for idx, num in enumerate(phone_numbers):
+                            my_num = clean_number(num)
+                            if api_num and my_num and (api_num in my_num or my_num in api_num):
+                                matched_num = num; matched_idx = idx; break
+                        if not matched_num:
+                            continue
+                        msg_id = item.get("otp_id") or item.get("id")
+                        if not msg_id:
+                            continue
+                        if msg_id in global_used_otps[chat_id]:
+                            continue
+                        if msg_id in used_otps[chat_id]:
+                            continue
+                        used_otps[chat_id].append(msg_id)
+                        global_used_otps[chat_id].add(msg_id)
+                        otp = extract_otp(item.get("message", ""), matched_num)
+                        if otp is None:
+                            continue
                         
-                        continue
+                            continue
                         
-                    uid_str = str(chat_id)
-                    # ✅ Firebase থেকে dynamic price পড়ুন
-                    current_price = get_otp_price_from_firebase()
-                    new_bal = update_firebase_balance(uid_str, current_price)
+                        uid_str = str(chat_id)
+                        # ✅ Firebase থেকে dynamic price পড়ুন
+                        current_price = get_otp_price_from_firebase()
+                        new_bal = update_firebase_balance(uid_str, current_price)
                         
-                    # ✅ নাম্বার কেনার সময়ই যে country সেভ করা হয়েছিল সেটা থেকে flag বের করা
-                    country_list = user_countries.get(chat_id, [])
-                    detected_country = country_list[matched_idx] if (matched_idx is not None and matched_idx < len(country_list)) else None
-                    flag_emoji = get_flag(detected_country) if detected_country else None
+                        # ✅ নাম্বার কেনার সময়ই যে country সেভ করা হয়েছিল সেটা থেকে flag বের করা
+                        # (SMS টেক্সটে flag emoji খোঁজা ভুল ছিল, কারণ SMS-এ কখনো flag emoji থাকে না)
+                        country_list = user_countries.get(chat_id, [])
+                        detected_country = country_list[matched_idx] if (matched_idx is not None and matched_idx < len(country_list)) else None
+                        flag_emoji = get_flag(detected_country) if detected_country else None
                         
-                    # ✅ LIVE TRAFFIC আপডেট করা
-                    service = user_service.get(chat_id, "Others")
-                    if flag_emoji and detected_country:
-                        update_traffic(service, detected_country, flag_emoji)
+                        # ✅ LIVE TRAFFIC আপডেট করা
+                        service = user_service.get(chat_id, "Others")
+                        if flag_emoji and detected_country:
+                            update_traffic(service, detected_country, flag_emoji)
                         
-                    received_otps[chat_id] = otp
-                    # Display এ use করার জন্য
-                    display_flag = flag_emoji if flag_emoji else "🌍"
-                    display_country = detected_country if detected_country else "Unknown"
-                    text    = f"╭──────────────╮\n📩 {service} OTP  ✅\n╰──────────────╯\n{display_flag}  : {matched_num}\n💸 𝐄𝐚𝐫𝐧𝐞𝐝 : {current_price:.2f} ৳\n✅ 𝐒𝐭𝐚𝐭𝐮𝐬 : 𝐒𝐮𝐜𝐜𝐞𝐬𝐬"
-                    kb = otp_result_markup(otp)
-                    if not first_otp_found and search_msg_id:
-                        try:
-                            bot.edit_message_text(text, chat_id, search_msg_id, reply_markup=kb)
-                            first_otp_found = True
-                        except Exception:
+                        received_otps[chat_id] = otp
+                        # Display এ use করার জন্য
+                        display_flag = flag_emoji if flag_emoji else "🌍"
+                        display_country = detected_country if detected_country else "Unknown"
+                        text    = f"╭──────────────╮\n📩 {service} OTP  ✅\n╰──────────────╯\n{display_flag}  : {matched_num}\n💸 𝐄𝐚𝐫𝐧𝐞𝐝 : {current_price:.2f} ৳\n✅ 𝐒𝐭𝐚𝐭𝐮𝐬 : 𝐒𝐮𝐜𝐜𝐞𝐬𝐬"
+                        kb = otp_result_markup(otp)
+                        if not first_otp_found and search_msg_id:
                             try:
-                                bot.send_message(chat_id, text, reply_markup=kb)
+                                bot.edit_message_text(text, chat_id, search_msg_id, reply_markup=kb)
                                 first_otp_found = True
                             except Exception:
+                                try:
+                                    bot.send_message(chat_id, text, reply_markup=kb)
+                                    first_otp_found = True
+                                except Exception:
+                                    pass
+                        else:
+                            try:
+                                bot.send_message(chat_id, text, reply_markup=kb)
+                            except Exception:
                                 pass
-                    else:
-                        try:
-                            bot.send_message(chat_id, text, reply_markup=kb)
-                        except Exception:
-                            pass
             except requests.exceptions.Timeout:
                 consecutive_errors += 1
             except requests.exceptions.RequestException:
@@ -1414,17 +1249,8 @@ def auto_check_otp(chat_id, phone_numbers, number_msg_id=None, search_msg_id=Non
 # ===================== NUMBER PROCESSING — ২টা নাম্বার =====================
 def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
     chat_id = message.chat.id
-    
-    # ✅ Firebase থেকে load করুন
-    load_countries_from_firebase()
-
-    # ✅ যে range (rid) caller থেকে পাঠানো হয়েছে ঠিক সেটাই ব্যবহার হবে —
-    # এখানে আর random কোনো range বেছে নেওয়া হবে না। এটাই আসল বাগ ছিল:
-    # আগে এখানে সব configured range থেকে random একটা বেছে নেওয়া হতো,
-    # ফলে ইউজার যে country/range সিলেক্ট করত সেটা উপেক্ষা করে অন্য
-    # (প্রায়ই Bangladesh) নাম্বার চলে আসত।
-    if not rid:
-        rid = "8801"  # শুধু emergency fallback, স্বাভাবিকভাবে এটা কখনো ব্যবহার হবে না
+    if rid is None:
+        rid = user_ranges.get(chat_id) or message.text
 
     loading_text = "⏳ PLEASE WAIT...\n🔄 NUMBER GENERATING..."
     if edit_msg:
@@ -1436,27 +1262,21 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
     else:
         status_id = bot.send_message(chat_id, loading_text).message_id
 
-    # ✅ ২টা নাম্বার নাও — একই range (rid) থেকে
+    # ✅ ২টা নাম্বার নাও
     nums      = []
     countries = []
-    ids       = []
     max_retries = 5
 
     for attempt in range(max_retries):
         try:
-            r    = requests.post(f"{NUMBER_API}/numbers", headers={"Authorization": f"Bearer {NUMBER_KEY}"},
-                                 json={"range": rid, "sid": "wa", "no_plus": False, "national": False},
-                                 timeout=15)
+            r    = session.post(f"{BASE_URL}/getnum", json={"rid": rid}, timeout=15)
             data = r.json()
-            if data.get("ok"):
-                full_num = str(data.get("number", "")).replace("+", "")
-                country  = data.get("country", "Unknown")  # ✅ Nexus থেকেই পাবি
-                api_id   = data.get("id")  # ✅ এই নাম্বারটার নিজস্ব API ID
-
+            if data.get("meta", {}).get("code") == 200:
+                full_num = str(data["data"]["full_number"]).replace("+", "")
+                country  = data["data"].get("country", "Unknown")
                 if full_num not in nums:
                     nums.append(full_num)
                     countries.append(country)
-                    ids.append(api_id)
                 break
             if attempt < max_retries - 1:
                 try:
@@ -1475,38 +1295,32 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
             pass
         return
 
-    # ২য় নাম্বার নাও — একই range (rid) থেকে
+    # ২য় নাম্বার নাও
     for attempt in range(3):
         try:
-            r    = requests.post(f"{NUMBER_API}/numbers", headers={"Authorization": f"Bearer {NUMBER_KEY}"},
-                                 json={"range": rid, "sid": "wa", "no_plus": False, "national": False},
-                                 timeout=15)
+            r    = session.post(f"{BASE_URL}/getnum", json={"rid": rid}, timeout=15)
             data = r.json()
-            if data.get("ok"):
-                full_num2 = str(data.get("number", "")).replace("+", "")
-                country2  = data.get("country", "Unknown")  # ✅ Nexus থেকেই পাবি
-                api_id2   = data.get("id")
-
+            if data.get("meta", {}).get("code") == 200:
+                full_num2 = str(data["data"]["full_number"]).replace("+", "")
+                country2  = data["data"].get("country", "Unknown")
                 if full_num2 not in nums:
                     nums.append(full_num2)
                     countries.append(country2)
-                    ids.append(api_id2)
                 break
             time.sleep(2)
         except Exception:
             time.sleep(2)
 
     # State সেট করো
-    otp_running[chat_id]     = False
-    strd_running[chat_id]    = False
+    otp_running[chat_id]    = False
+    strd_running[chat_id]   = False
     time.sleep(0.5)  # পুরনো thread বন্ধ হওয়ার সময় দাও
-    user_numbers[chat_id]    = nums
-    user_countries[chat_id]  = countries
-    user_number_ids[chat_id] = ids     # ✅ প্রতিটা নাম্বারের নিজস্ব API ID, OTP চেক করতে লাগবে
-    user_ranges[chat_id]     = rid     # ✅ এই range/rid-টাই "Change Number" চাপলে আবার ব্যবহার হবে
-    user_service[chat_id]    = service_name
-    received_otps[chat_id]   = None
-    used_otps[chat_id]       = []
+    user_numbers[chat_id]   = nums
+    user_countries[chat_id] = countries
+    user_ranges[chat_id]    = rid
+    user_service[chat_id]   = service_name
+    received_otps[chat_id]  = None
+    used_otps[chat_id]      = []
 
     back_cb      = f"back_to_country_{service_name}" if service_name in FIXED_SERVICES else "back_to_services"
     country_show = countries[0] if countries else "Unknown"
@@ -1641,37 +1455,18 @@ def handle_admin_state(message, uid, txt):
         service_name = state.get("service")
         country_name = state.get("country")
         rid          = txt
-        
-        # ✅ Fresh load করুন Firebase থেকে সবসময়
-        load_countries_from_firebase()
-        
-        countries    = service_countries.get(service_name, [])
+        countries    = service_countries[service_name]
         found = False
         for c in countries:
-            if c.get("name", "").lower() == country_name.lower():
-                c["rid"] = rid
-                found = True
-                break
-        
+            if c["name"].lower() == country_name.lower():
+                c["rid"] = rid; found = True; break
         if not found:
             countries.append({"name": country_name, "rid": rid})
-        
-        # ✅ Firebase এ DIRECTLY save করুন
-        try:
-            _fb_put(f"/admin_ranges/{service_name}", countries)
-            print(f"✅ Firebase saved: {service_name} → {countries}")
-        except Exception as e:
-            print(f"❌ Firebase error: {e}")
-            bot.send_message(cid, f"❌ Firebase save error: {e}")
-            return
-        
-        # ✅ Memory এ update করুন
-        service_countries[service_name] = countries
-        
+        save_countries_to_firebase(service_name)
         admin_state.pop(uid, None)
         bot.send_message(
             cid,
-            f"✅ সফলভাবে এড হয়েছে!\n🌍 Service : {service_name}\n🌏 Country : {country_name}\n🔢 Range   : {rid}\n\n✅ Firebase এ Save হয়েছে!",
+            f"✅ সফলভাবে এড হয়েছে!\n🌍 Service : {service_name}\n🌏 Country : {country_name}\n🔢 Range   : {rid}",
             reply_markup=admin_panel_markup()
         )
 
@@ -1848,8 +1643,6 @@ def handle_query(call):
     elif call.data == "adm_cancel":
         admin_state.pop(uid_str, None)
         withdraw_data.pop(uid, None)
-        # ✅ Fresh load করুন Firebase থেকে - latest data দেখাতে
-        load_countries_from_firebase()
         try:
             bot.edit_message_text("❌ বাতিল করা হয়েছে।", cid, call.message.message_id)
         except Exception:
@@ -1858,8 +1651,6 @@ def handle_query(call):
 
     elif call.data == "adm_add_country":
         if not is_admin(uid): return
-        # ✅ Fresh load করুন Firebase থেকে
-        load_countries_from_firebase()
         try:
             bot.edit_message_text("🌍 কোন সার্ভিসে দেশ এড করবেন?", cid, call.message.message_id, reply_markup=admin_service_select_markup("addcountry"))
         except Exception:
@@ -1989,8 +1780,6 @@ def handle_query(call):
 
     elif call.data == "adm_del_country":
         if not is_admin(uid): return
-        # ✅ Fresh load করুন Firebase থেকে
-        load_countries_from_firebase()
         try:
             bot.edit_message_text(
                 "🗑️ কোন সার্ভিস থেকে দেশ ডিলিট করবেন?",
@@ -2002,10 +1791,6 @@ def handle_query(call):
 
     elif call.data.startswith("adm_delcountry_") and not call.data.startswith("adm_delcountry_do_"):
         if not is_admin(uid): return
-        
-        # ✅ Fresh load করুন Firebase থেকে
-        load_countries_from_firebase()
-        
         service_name = call.data.replace("adm_delcountry_", "")
         if service_name not in FIXED_SERVICES: return
         try:
@@ -2019,10 +1804,6 @@ def handle_query(call):
 
     elif call.data.startswith("adm_delcountry_do_"):
         if not is_admin(uid): return
-        
-        # ✅ Fresh load করুন Firebase থেকে
-        load_countries_from_firebase()
-        
         inner        = call.data.replace("adm_delcountry_do_", "")
         sep          = inner.rfind("__")
         if sep == -1: return
@@ -2032,19 +1813,10 @@ def handle_query(call):
         if idx >= len(countries): return
         deleted      = countries[idx]["name"]
         service_countries[service_name].pop(idx)
-        
-        # ✅ Firebase এ DIRECTLY save করুন
-        try:
-            _fb_put(f"/admin_ranges/{service_name}", service_countries[service_name])
-            print(f"✅ Firebase deleted: {service_name} → {deleted}")
-        except Exception as e:
-            print(f"❌ Firebase delete error: {e}")
-            bot.send_message(cid, f"❌ Firebase error: {e}")
-            return
-        
+        save_countries_to_firebase(service_name)
         try:
             bot.edit_message_text(
-                f"✅ {service_name} → {deleted} ডিলিট হয়েছে! (Firebase এ deleted)\n\n🗑️ আর কোন দেশ ডিলিট করবেন?",
+                f"✅ {service_name} → {deleted} ডিলিট হয়েছে!\n\n🗑️ কোন দেশ ডিলিট করবেন?",
                 cid, call.message.message_id,
                 reply_markup=admin_del_country_list_markup(service_name)
             )
@@ -2185,17 +1957,12 @@ def handle_query(call):
             bot.send_message(cid, msg_text, reply_markup=balance_markup(balance))
 
     elif call.data == "back_to_services":
-        # ✅ Fresh load করুন Firebase থেকে
-        load_countries_from_firebase()
         try:
             bot.edit_message_text("📱 যে সার্ভিসের নাম্বার প্রয়োজন তা\nসিলেক্ট করুন:", cid, call.message.message_id, reply_markup=service_menu_markup())
         except Exception:
             bot.send_message(cid, "📱 যে সার্ভিসের নাম্বার প্রয়োজন তা\nসিলেক্ট করুন:", reply_markup=service_menu_markup())
 
     elif call.data.startswith("back_to_country_"):
-        # ✅ Fresh load করুন Firebase থেকে
-        load_countries_from_firebase()
-        
         service_name = call.data.replace("back_to_country_", "")
         if service_name not in FIXED_SERVICES:
             service_name = user_service.get(cid, "")
