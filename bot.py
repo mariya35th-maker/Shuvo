@@ -39,7 +39,7 @@ BOT_TOKEN    = "8631753930:AAF2eJ-_dYXPEiJwtv8fLGfIaNeXB6zPliA"
 BASE_URL     = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api"
 HEADERS      = {"mauthapi": API_KEY}
 ADMIN_ID     = "6730133217"
-GROUP_URL    = "https://t.me/onlineskillshub1"
+GROUP_URL    = "https://t.me/otpgurup1"
 FIREBASE_URL = "https://shuvo-866aa-default-rtdb.firebaseio.com/"
 
 REQUIRED_CHANNELS = ["@onlineskillshub1", "@otpgurup1"]
