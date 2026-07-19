@@ -31,7 +31,7 @@ def keep_alive():
     t.start()
 
 # ===================== CONFIG =====================
-BOT_TOKEN         = "8764978166:AAH5tQLO71RCoCN1qtAr6xebGxFYiRT9z4A"
+BOT_TOKEN         = "8631753930:AAF2eJ-_dYXPEiJwtv8fLGfIaNeXB6zPliA"
 CHANNEL_ID        = "-1004361188862"
 API_KEY           = "MUYZ1SXYKG8"
 CONSOLE_URL       = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/console"
