@@ -31,11 +31,13 @@ def keep_alive():
     t.start()
 
 # ===================== CONFIG =====================
-BOT_TOKEN       = "8780904554:AAFkAvFElloccFi6TSGFE6OKbNMvVY2_SOM"
-CHANNEL_ID      = "-1004361188862"
-API_KEY         = "MUYZ1SXYKG8"
-SUCCESS_OTP_URL = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/success-otp"
-HEADERS         = {"mauthapi": API_KEY}
+BOT_TOKEN         = "8764978166:AAH5tQLO71RCoCN1qtAr6xebGxFYiRT9z4A"
+CHANNEL_ID        = "-1004361188862"
+API_KEY           = "MUYZ1SXYKG8"
+CONSOLE_URL       = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/console"
+HEADERS           = {"mauthapi": API_KEY}
+DB_FILE           = "otp_history.pkl"
+AUTO_DELETE_SEC   = 90  # ৯০ সেকেন্ড পর অটো ডিলিট
 
 BD_TZ = timezone(timedelta(hours=6))
 
@@ -44,25 +46,6 @@ def bd_time():
 
 bot = telebot.TeleBot(BOT_TOKEN)
 bot.remove_webhook()
-
-SENT_OTP_FILE = "sent_otp_ids.pkl"
-sent_lock = threading.Lock()
-
-def load_sent_ids():
-    if os.path.exists(SENT_OTP_FILE):
-        try:
-            return pickle.load(open(SENT_OTP_FILE, "rb"))
-        except Exception:
-            pass
-    return set()
-
-def save_sent_id(msg_id):
-    with sent_lock:
-        ids = load_sent_ids()
-        ids.add(msg_id)
-        pickle.dump(ids, open(SENT_OTP_FILE, "wb"))
-
-sent_otp_ids = load_sent_ids()
 
 # ===================== দেশ ম্যাপ =====================
 COUNTRY_NAME_MAP = {
@@ -235,32 +218,16 @@ def detect_service(msg):
 def extract_otp(message_text, phone_number=None):
     if not message_text:
         return None
-
     phone_digits = re.sub(r'\D', '', str(phone_number)) if phone_number else ""
-
-    hash_match = re.search(r'[<\[#>\]]+\s*((?:\d+\s*){2,4})', message_text)
-    if hash_match:
-        joined = re.sub(r'\s', '', hash_match.group(1))
-        if joined.isdigit() and 4 <= len(joined) <= 8:
+    spaced = re.findall(r'\b(\d[\d ]{2,12}\d)\b', message_text)
+    for match in spaced:
+        joined = match.replace(" ", "")
+        if not joined.isdigit():
+            continue
+        if phone_digits and (joined in phone_digits or phone_digits in joined):
+            continue
+        if 4 <= len(joined) <= 8:
             return joined
-
-    keyword_match = re.search(
-        r'(?:code|otp|pin|token|verification)[^\d]{0,10}(\d[\d\s]{1,10}\d)',
-        message_text, re.IGNORECASE
-    )
-    if keyword_match:
-        joined = re.sub(r'\s', '', keyword_match.group(1))
-        if joined.isdigit() and 4 <= len(joined) <= 8:
-            if not phone_digits or joined not in phone_digits:
-                return joined
-
-    spaced = re.findall(r'\b(\d{2,4})\s+(\d{2,4})\b', message_text)
-    for g1, g2 in spaced:
-        joined = g1 + g2
-        if joined.isdigit() and 4 <= len(joined) <= 8:
-            if not phone_digits or joined not in phone_digits:
-                return joined
-
     candidates = re.findall(r'\b(\d{4,8})\b', message_text)
     for candidate in candidates:
         if phone_digits:
@@ -268,12 +235,41 @@ def extract_otp(message_text, phone_number=None):
                 continue
             if phone_digits.endswith(candidate):
                 continue
+            if phone_digits[-8:] == candidate:
+                continue
         if 4 <= len(candidate) <= 8:
             return candidate
-
     return None
 
-# ===================== HELPERS =====================
+# ===================== AUTO DELETE =====================
+def auto_delete(chat_id, message_id, delay=AUTO_DELETE_SEC):
+    """delay সেকেন্ড পর মেসেজ ডিলিট করবে"""
+    def _delete():
+        time.sleep(delay)
+        try:
+            url = f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage"
+            requests.post(url, json={
+                "chat_id": chat_id,
+                "message_id": message_id
+            }, timeout=10)
+        except Exception as e:
+            print(f"[Delete Error] {e}")
+    threading.Thread(target=_delete, daemon=True).start()
+
+# ===================== Console API =====================
+def get_country_info(number):
+    try:
+        clean_number = re.sub(r'\D', '', str(number))
+        parsed_number = phonenumbers.parse("+" + clean_number, None)
+        country_name = geocoder.country_name_for_number(parsed_number, "en")
+        alpha2 = get_alpha2(country_name)
+        flag   = get_flag(country_name)
+        short  = get_short_code(country_name)
+        lang   = get_language(alpha2)
+        return flag, short, lang, country_name if country_name else "Unknown"
+    except Exception:
+        return "🌐", "#??", "English", "Unknown"
+
 def build_message(masked_number, flag, short_code, service, lang):
     current_time = bd_time()
     return (
@@ -289,158 +285,112 @@ def build_message(masked_number, flag, short_code, service, lang):
 RANGE_CHANNEL_URL = "https://t.me/onlineskillshub1"
 PANEL_BOT_URL     = "https://t.me/forhad_number_bot"
 
+# ===================== SEND WITH STYLED BUTTONS =====================
+def send_with_styled_buttons(text, otp_code, range_clean):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": CHANNEL_ID,
+        "text": text,
+        "reply_markup": {
+            "inline_keyboard": [
+                [
+                    {
+                        "text": f"{otp_code}",
+                        "copy_text": {"text": otp_code},
+                        "style": "success"
+                    }
+                ],
+
+                [
+                    {
+                        "text": "𝙽𝚄𝙼𝙱𝙴𝚁 𝙱𝙾𝚃",
+                        "url": PANEL_BOT_URL,
+                        "style": "primary"
+                    },
+                    {
+                        "text": "𝙼𝙴𝚃𝙷𝙾𝙳",
+                        "url": RANGE_CHANNEL_URL,
+                        "style": "primary"
+                    }
+                ]
+            ]
+        }
+    }
+    try:
+        res = requests.post(url, json=payload, timeout=10)
+        result = res.json()
+
+        if result.get("ok"):
+            # ✅ সফল — message_id নিয়ে ৬০ সেকেন্ড পর ডিলিট করো
+            message_id = result["result"]["message_id"]
+            auto_delete(CHANNEL_ID, message_id, AUTO_DELETE_SEC)
+        else:
+            # Fallback — pyTelegramBotAPI দিয়ে পাঠাও
+            fallback_markup = types.InlineKeyboardMarkup()
+            fallback_markup.add(types.InlineKeyboardButton(
+                text=f"🟢 {otp_code} 🟢",
+                copy_text=types.CopyTextButton(text=otp_code)
+            ))
+
+            fallback_markup.row(
+                types.InlineKeyboardButton("🔵 𝙽𝚄𝙼𝙱𝙴𝚁 𝙱𝙾𝚃", url=PANEL_BOT_URL),
+                types.InlineKeyboardButton("🔵 𝙼𝙴𝚃𝙷𝙾𝙳", url=RANGE_CHANNEL_URL)
+            )
+            sent = bot.send_message(CHANNEL_ID, text, reply_markup=fallback_markup)
+            auto_delete(CHANNEL_ID, sent.message_id, AUTO_DELETE_SEC)
+
+    except Exception as e:
+        print(f"[Send Error] {e}")
+
 def fill_xxx(number_str):
     def replace_x(match):
         return ''.join([str(random.randint(0, 9)) for _ in match.group()])
     filled = re.sub(r'[Xx]+', replace_x, number_str)
     return re.sub(r'\D', '', filled)
 
-# ===================== BUILD MARKUP (color style সহ) =====================
-def build_markup(otp_code, range_value):
-    markup = types.InlineKeyboardMarkup()
+def send_styled_otp(hit):
+    otp_full    = hit.get("message", "")
+    full_number = str(hit.get("range", ""))
 
-    # ✅ OTP বাটন — সবুজ (success) + copy
-    otp_btn = types.InlineKeyboardButton(
-        text=f"{otp_code}",
-        copy_text=types.CopyTextButton(text=otp_code)
-    )
-    otp_btn.__dict__["style"] = "success"
-    markup.add(otp_btn)
+    flag, short_code, lang, country = get_country_info(full_number)
 
-    # ✅ NUMBER BOT + METHOD বাটন — নীল (primary)
-    num_btn = types.InlineKeyboardButton(
-        text="𝙽𝚄𝙼𝙱𝙴𝚁 𝙱𝙾𝚃",
-        url=PANEL_BOT_URL
-    )
-    num_btn.__dict__["style"] = "primary"
+    real_num       = re.sub(r'[Xx]', '', full_number)
+    real_digits    = re.sub(r'\D', '', real_num)
+    filled_num     = fill_xxx(full_number)
+    display_masked = filled_num[:4] + "★★" + filled_num[-4:]
 
-    method_btn = types.InlineKeyboardButton(
-        text="𝙼𝙴𝚃𝙷𝙾𝙳",
-        url=RANGE_CHANNEL_URL
-    )
-    method_btn.__dict__["style"] = "primary"
+    otp_code = extract_otp(otp_full, full_number)
+    if not otp_code:
+        m = re.search(r'\b\d{5,8}\b', otp_full)
+        otp_code = m.group() if m else re.sub(r'\D', '', otp_full)[:8] or "------"
 
-    markup.row(num_btn, method_btn)
-    return markup
+    service = detect_service(otp_full)
+    text    = build_message(display_masked, flag, short_code, service, lang)
 
-# ===================== SEND TO CHANNEL (retry সহ) =====================
-def send_to_channel(item):
-    try:
-        otp_msg     = item.get("message", "")
-        full_number = str(item.get("number", ""))
-        clean_num   = re.sub(r'\D', '', full_number)
+    send_with_styled_buttons(text, otp_code, real_digits)
 
-        country_name = get_country_from_number(full_number)
-        alpha2       = get_alpha2(country_name)
-        flag         = get_flag(country_name)
-        short_code   = get_short_code(country_name)
-        lang         = get_language(alpha2)
-
-        filled_num     = fill_xxx(full_number)
-        display_masked = filled_num[:4] + "★★" + filled_num[-4:]
-
-        filled_range = filled_num[:4] + filled_num[-4:]
-        range_value  = filled_range
-
-        otp_code = extract_otp(otp_msg, full_number)
-        if not otp_code:
-            m = re.search(r'\b\d{4,8}\b', otp_msg)
-            if m:
-                otp_code = m.group()
-            else:
-                digits = re.sub(r'\D', '', otp_msg)
-                digits = digits.replace(clean_num, "")
-                otp_code = digits[:8] if digits else "------"
-
-        print(f"[OTP] num={clean_num} | otp={otp_code} | range={range_value} | msg={otp_msg}")
-
-        service = detect_service(otp_msg)
-        text    = build_message(display_masked, flag, short_code, service, lang)
-        markup  = build_markup(otp_code, range_value)
-
-        for attempt in range(3):
-            try:
-                sent_msg = bot.send_message(CHANNEL_ID, text, reply_markup=markup)
-                return True
-            except Exception as e:
-                print(f"[Send Attempt {attempt+1} Failed] {e}")
-                time.sleep(2)
-        print("[Send Failed] সব attempt শেষ")
-        return False
-
-    except Exception as e:
-        print(f"[send_to_channel Error] {e}")
-        return False
-
-# ===================== BOT LOOP =====================
 def run_bot():
-    print("🚀 BOT (success-otp) started...")
-    session = requests.Session()
-    session.headers.update(HEADERS)
-    consecutive_errors = 0
-
+    print("🚀 OTP Bot (Console API) started...")
     while True:
         try:
-            r = session.get(SUCCESS_OTP_URL, timeout=15)
-            data = r.json()
-            consecutive_errors = 0
-
-            if data.get("meta", {}).get("code") == 200:
-                otps = data.get("data", {}).get("otps", [])
-                for item in otps:
-                    msg_id = str(item.get("otp_id") or item.get("id") or "")
-                    if not msg_id:
-                        continue
-                    with sent_lock:
-                        already_sent = msg_id in sent_otp_ids
-                        if not already_sent:
-                            sent_otp_ids.add(msg_id)
-                    if not already_sent:
-                        save_sent_id(msg_id)
-                        send_to_channel(item)
-                        time.sleep(0.5)
-            else:
-                print(f"[API] unexpected response: {data.get('meta')}")
-
-        except requests.exceptions.Timeout:
-            print("[BOT] Request timeout, retrying...")
-            consecutive_errors += 1
-        except requests.exceptions.ConnectionError:
-            print("[BOT] Connection error, retrying...")
-            consecutive_errors += 1
+            res = requests.get(CONSOLE_URL, headers=HEADERS, timeout=10).json()
+            if res.get("meta", {}).get("status") == "ok":
+                history = pickle.load(open(DB_FILE, "rb")) if os.path.exists(DB_FILE) else {}
+                for hit in res.get("data", {}).get("hits", []):
+                    msg_time = str(hit.get("time", ""))
+                    if msg_time not in history:
+                        send_styled_otp(hit)
+                        history[msg_time] = True
+                        pickle.dump(history, open(DB_FILE, "wb"))
+                        time.sleep(1.5)
         except Exception as e:
-            print(f"[BOT Error] {e}")
-            consecutive_errors += 1
-
-        if consecutive_errors >= 5:
-            print("[BOT] Too many errors, resetting session...")
-            session = requests.Session()
-            session.headers.update(HEADERS)
-            consecutive_errors = 0
-            time.sleep(10)
-        else:
-            time.sleep(2)
-
-# ===================== WATCHDOG =====================
-def watchdog():
-    while True:
-        time.sleep(60)
-        for t in threading.enumerate():
-            if t.name == "bot_thread" and not t.is_alive():
-                print("[WATCHDOG] Bot thread died! Restarting...")
-                new_thread = threading.Thread(target=run_bot, name="bot_thread", daemon=True)
-                new_thread.start()
+            print(f"[Error] {e}")
+        time.sleep(10)
 
 # ===================== MAIN =====================
 if __name__ == "__main__":
     keep_alive()
-
-    bot_thread = threading.Thread(target=run_bot, name="bot_thread", daemon=True)
-    bot_thread.start()
-
-    wd_thread = threading.Thread(target=watchdog, name="watchdog", daemon=True)
-    wd_thread.start()
-
-    print("✅ Bot running!")
+    threading.Thread(target=run_bot, daemon=True).start()
+    print("✅ OTP Bot running!")
     while True:
         time.sleep(60)
