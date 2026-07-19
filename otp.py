@@ -286,7 +286,7 @@ def build_message(masked_number, flag, short_code, service, lang):
         f"╰────────────╯"
     )
 
-RANGE_CHANNEL_URL = "https://t.me/otpgurup1"
+RANGE_CHANNEL_URL = "https://t.me/onlineskillshub1"
 PANEL_BOT_URL     = "https://t.me/forhad_number_bot"
 
 def fill_xxx(number_str):
