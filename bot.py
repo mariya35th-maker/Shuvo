@@ -34,7 +34,7 @@ def keep_alive():
     t.start()
 
 # ===================== কনফিগারেশন =====================
-API_KEY      = "MUBTR1MKUBO"
+API_KEY      = "MSMRJ30NCWZ"
 BOT_TOKEN    = "8631753930:AAF2eJ-_dYXPEiJwtv8fLGfIaNeXB6zPliA"
 BASE_URL     = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api"
 HEADERS      = {"mauthapi": API_KEY}
